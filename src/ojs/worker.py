@@ -8,11 +8,12 @@ including heartbeats, ack/nack, and graceful shutdown.
 from __future__ import annotations
 
 import asyncio
+import enum
 import logging
 import signal
 import traceback
 import uuid
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable
 
 from ojs.job import Job, JobContext, JobHandler
 from ojs.middleware import ExecutionMiddleware, ExecutionMiddlewareChain
@@ -20,6 +21,15 @@ from ojs.transport.base import Transport
 from ojs.transport.http import HTTPTransport
 
 logger = logging.getLogger("ojs.worker")
+
+
+class WorkerState(enum.StrEnum):
+    """Worker lifecycle states."""
+
+    IDLE = "idle"
+    RUNNING = "running"
+    QUIET = "quiet"
+    TERMINATE = "terminate"
 
 
 class Worker:
@@ -90,7 +100,7 @@ class Worker:
         self._worker_id = f"worker_{uuid.uuid4().hex[:16]}"
 
         # Runtime state
-        self._state: str = "idle"  # idle, running, quiet, terminate
+        self._state = WorkerState.IDLE
         self._active_jobs: dict[str, asyncio.Task[Any]] = {}
         self._shutdown_event = asyncio.Event()
         self._semaphore: asyncio.Semaphore | None = None
@@ -100,7 +110,7 @@ class Worker:
         return self._worker_id
 
     @property
-    def state(self) -> str:
+    def state(self) -> WorkerState:
         return self._state
 
     # --- Handler Registration ---
@@ -152,7 +162,7 @@ class Worker:
 
         Blocks until shutdown is triggered (via signal or explicit stop).
         """
-        self._state = "running"
+        self._state = WorkerState.RUNNING
         self._semaphore = asyncio.Semaphore(self._concurrency)
 
         # Install signal handlers
@@ -178,17 +188,17 @@ class Worker:
                 if not isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt)):
                     logger.error("Worker error: %s", exc)
         finally:
-            self._state = "idle"
+            self._state = WorkerState.IDLE
             logger.info("Worker %s stopped", self._worker_id)
 
     async def stop(self) -> None:
         """Trigger graceful shutdown."""
-        self._state = "terminate"
+        self._state = WorkerState.TERMINATE
         self._shutdown_event.set()
 
     def _handle_signal(self, sig: signal.Signals) -> None:
         logger.info("Received signal %s, shutting down", sig.name)
-        self._state = "terminate"
+        self._state = WorkerState.TERMINATE
         self._shutdown_event.set()
 
     async def _wait_for_shutdown(self) -> None:
@@ -225,12 +235,13 @@ class Worker:
 
     async def _fetch_loop(self) -> None:
         """Continuously fetch jobs from queues and dispatch them."""
-        while self._state == "running":
+        while self._state == WorkerState.RUNNING:
             try:
-                assert self._semaphore is not None
+                if self._semaphore is None:
+                    raise RuntimeError("Worker.start() must be called before fetch loop")
                 await self._semaphore.acquire()
 
-                if self._state != "running":
+                if self._state != WorkerState.RUNNING:
                     self._semaphore.release()
                     break
 
@@ -252,15 +263,18 @@ class Worker:
                         name=f"job-{job.id}",
                     )
                     self._active_jobs[job.id] = task
-                    task.add_done_callback(
-                        lambda t, jid=job.id: self._job_done(jid)
-                    )
+                    task.add_done_callback(self._make_done_callback(job.id))
 
             except asyncio.CancelledError:
                 break
             except Exception:
                 logger.exception("Error in fetch loop")
                 await asyncio.sleep(self._poll_interval)
+
+    def _make_done_callback(self, job_id: str) -> Callable[[asyncio.Task[Any]], None]:
+        def _callback(task: asyncio.Task[Any]) -> None:
+            self._job_done(job_id)
+        return _callback
 
     def _job_done(self, job_id: str) -> None:
         self._active_jobs.pop(job_id, None)
@@ -315,10 +329,10 @@ class Worker:
 
     async def _heartbeat_loop(self) -> None:
         """Periodically send heartbeats to the OJS server."""
-        while self._state in ("running", "quiet"):
+        while self._state in (WorkerState.RUNNING, WorkerState.QUIET):
             try:
                 active_ids = list(self._active_jobs.keys())
-                if active_ids or self._state == "running":
+                if active_ids or self._state == WorkerState.RUNNING:
                     response = await self._transport.heartbeat(
                         worker_id=self._worker_id,
                         active_jobs=active_ids,
@@ -327,9 +341,9 @@ class Worker:
 
                     # Handle server-initiated state changes
                     server_state = response.get("state")
-                    if server_state == "quiet" and self._state == "running":
+                    if server_state == "quiet" and self._state == WorkerState.RUNNING:
                         logger.info("Server requested quiet mode")
-                        self._state = "quiet"
+                        self._state = WorkerState.QUIET
                     elif server_state == "terminate":
                         logger.info("Server requested termination")
                         await self.stop()

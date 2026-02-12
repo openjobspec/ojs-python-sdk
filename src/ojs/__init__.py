@@ -42,7 +42,7 @@ from ojs.middleware import (
 )
 from ojs.queue import Queue, QueueStats
 from ojs.retry import RetryPolicy
-from ojs.worker import Worker
+from ojs.worker import Worker, WorkerState
 from ojs.workflow import (
     Workflow,
     WorkflowDefinition,
@@ -61,6 +61,7 @@ __all__ = [
     "SyncClient",
     # Worker
     "Worker",
+    "WorkerState",
     # Core types
     "Job",
     "JobContext",
