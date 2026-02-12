@@ -89,20 +89,8 @@ class HTTPTransport(Transport):
 
         if response.status_code == 204:
             return {}
-        return response.json()
-
-    async def _request_raw(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
-        """Make an HTTP request to a non-versioned path."""
-        try:
-            response = await self._client.request(method, path, **kwargs)
-        except httpx.ConnectError as e:
-            raise OJSConnectionError(str(e)) from e
-        except httpx.TimeoutException as e:
-            raise OJSTimeoutError(str(e)) from e
-
-        if response.status_code >= 400:
-            raise_for_error(response.status_code, response.json(), dict(response.headers))
-        return response.json()
+        result: dict[str, Any] = response.json()
+        return result
 
     # --- Job Operations ---
 
