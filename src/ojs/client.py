@@ -9,8 +9,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from ojs.errors import OJSError
 from ojs.job import Job, JobRequest
-from ojs.middleware import EnqueueMiddlewareChain, EnqueueNext
+from ojs.middleware import EnqueueMiddleware, EnqueueMiddlewareChain
 from ojs.queue import Queue, QueueStats
 from ojs.retry import RetryPolicy
 from ojs.transport.base import Transport
@@ -72,7 +73,7 @@ class Client:
 
     # --- Enqueue Middleware ---
 
-    def enqueue_middleware(self, fn: Any) -> Any:
+    def enqueue_middleware(self, fn: EnqueueMiddleware) -> EnqueueMiddleware:
         """Register an enqueue middleware (decorator).
 
         The middleware receives (request, next) and must call
@@ -145,7 +146,8 @@ class Client:
             return await self._transport.push(req.to_dict())
 
         result = await self._enqueue_middleware.execute(request, _push)
-        assert result is not None, "Enqueue middleware returned None unexpectedly"
+        if result is None:
+            raise OJSError("Enqueue middleware chain returned None unexpectedly")
         return result
 
     async def enqueue_batch(self, requests: list[JobRequest]) -> list[Job]:
