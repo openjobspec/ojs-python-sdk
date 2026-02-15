@@ -7,14 +7,16 @@ Job, JobRequest, JobContext, JobState, UniquePolicy.
 from __future__ import annotations
 
 import enum
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Coroutine
+from typing import Any
 
+from ojs._utils import parse_datetime
 from ojs.retry import RetryPolicy
 
 
-class JobState(str, enum.Enum):
+class JobState(enum.StrEnum):
     """The 8 OJS job lifecycle states."""
 
     SCHEDULED = "scheduled"
@@ -117,11 +119,6 @@ class Job:
         if "unique" in data and data["unique"]:
             unique = UniquePolicy.from_dict(data["unique"])
 
-        def _parse_dt(val: str | None) -> datetime | None:
-            if val is None:
-                return None
-            return datetime.fromisoformat(val.replace("Z", "+00:00"))
-
         return cls(
             id=data["id"],
             type=data["type"],
@@ -136,12 +133,12 @@ class Job:
             tags=data.get("tags", []),
             retry=retry,
             unique=unique,
-            created_at=_parse_dt(data.get("created_at")),
-            enqueued_at=_parse_dt(data.get("enqueued_at")),
-            started_at=_parse_dt(data.get("started_at")),
-            completed_at=_parse_dt(data.get("completed_at")),
-            scheduled_at=_parse_dt(data.get("scheduled_at")),
-            expires_at=_parse_dt(data.get("expires_at")),
+            created_at=parse_datetime(data.get("created_at")),
+            enqueued_at=parse_datetime(data.get("enqueued_at")),
+            started_at=parse_datetime(data.get("started_at")),
+            completed_at=parse_datetime(data.get("completed_at")),
+            scheduled_at=parse_datetime(data.get("scheduled_at")),
+            expires_at=parse_datetime(data.get("expires_at")),
             result=data.get("result"),
             errors=data.get("errors", []),
         )

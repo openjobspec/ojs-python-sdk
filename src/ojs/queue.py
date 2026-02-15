@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from ojs._utils import parse_datetime
+
 
 @dataclass
 class Queue:
@@ -17,15 +19,10 @@ class Queue:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Queue:
-        created_at = None
-        if "created_at" in data and data["created_at"]:
-            created_at = datetime.fromisoformat(
-                data["created_at"].replace("Z", "+00:00")
-            )
         return cls(
             name=data["name"],
             status=data.get("status", "active"),
-            created_at=created_at,
+            created_at=parse_datetime(data.get("created_at")),
         )
 
 
@@ -50,11 +47,6 @@ class QueueStats:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> QueueStats:
         stats = data.get("stats", {})
-        computed_at = None
-        if "computed_at" in data and data["computed_at"]:
-            computed_at = datetime.fromisoformat(
-                data["computed_at"].replace("Z", "+00:00")
-            )
         return cls(
             queue=data["queue"],
             status=data.get("status", "active"),
@@ -68,5 +60,5 @@ class QueueStats:
             avg_duration_ms=stats.get("avg_duration_ms", 0.0),
             avg_wait_ms=stats.get("avg_wait_ms", 0.0),
             throughput_per_second=stats.get("throughput_per_second", 0.0),
-            computed_at=computed_at,
+            computed_at=parse_datetime(data.get("computed_at")),
         )

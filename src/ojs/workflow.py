@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from ojs._utils import parse_datetime
 from ojs.job import JobRequest
 
 
@@ -43,11 +44,6 @@ class WorkflowStep:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> WorkflowStep:
-        def _parse_dt(val: str | None) -> datetime | None:
-            if val is None:
-                return None
-            return datetime.fromisoformat(val.replace("Z", "+00:00"))
-
         return cls(
             id=data["id"],
             type=data["type"],
@@ -57,8 +53,8 @@ class WorkflowStep:
             job_id=data.get("job_id"),
             state=data.get("state"),
             result=data.get("result"),
-            started_at=_parse_dt(data.get("started_at")),
-            completed_at=_parse_dt(data.get("completed_at")),
+            started_at=parse_datetime(data.get("started_at")),
+            completed_at=parse_datetime(data.get("completed_at")),
         )
 
 
@@ -74,17 +70,12 @@ class Workflow:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Workflow:
-        created_at = None
-        if "created_at" in data and data["created_at"]:
-            created_at = datetime.fromisoformat(
-                data["created_at"].replace("Z", "+00:00")
-            )
         return cls(
             id=data["id"],
             name=data["name"],
             state=data["state"],
             steps=[WorkflowStep.from_dict(s) for s in data.get("steps", [])],
-            created_at=created_at,
+            created_at=parse_datetime(data.get("created_at")),
         )
 
 
