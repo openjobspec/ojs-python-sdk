@@ -67,11 +67,13 @@ class TestEnqueueAndRetrieve:
         assert job.id is not None
 
     async def test_enqueue_batch(self, client: ojs.Client) -> None:
-        jobs = await client.enqueue_batch([
-            ojs.JobRequest(type="test.echo", args=["batch-1"], queue="test-integration"),
-            ojs.JobRequest(type="test.echo", args=["batch-2"], queue="test-integration"),
-            ojs.JobRequest(type="test.echo", args=["batch-3"], queue="test-integration"),
-        ])
+        jobs = await client.enqueue_batch(
+            [
+                ojs.JobRequest(type="test.echo", args=["batch-1"], queue="test-integration"),
+                ojs.JobRequest(type="test.echo", args=["batch-2"], queue="test-integration"),
+                ojs.JobRequest(type="test.echo", args=["batch-3"], queue="test-integration"),
+            ]
+        )
         assert len(jobs) == 3
         for j in jobs:
             assert j.id is not None

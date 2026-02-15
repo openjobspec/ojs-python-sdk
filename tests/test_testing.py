@@ -66,10 +66,12 @@ class TestFakeModeClientIntegration:
     async def test_enqueue_batch_records_in_fake_mode(self) -> None:
         with fake_mode():
             async with ojs.Client("http://fake:8080") as client:
-                jobs = await client.enqueue_batch([
-                    ojs.JobRequest(type="email.send", args=["a@b.com"]),
-                    ojs.JobRequest(type="email.send", args=["c@d.com"]),
-                ])
+                jobs = await client.enqueue_batch(
+                    [
+                        ojs.JobRequest(type="email.send", args=["a@b.com"]),
+                        ojs.JobRequest(type="email.send", args=["c@d.com"]),
+                    ]
+                )
 
             assert len(jobs) == 2
             assert all(j.id.startswith("fake-") for j in jobs)

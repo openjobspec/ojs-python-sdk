@@ -78,9 +78,7 @@ class HTTPTransport(Transport):
                 f"Failed to connect to OJS server at {self._base_url}: {e}"
             ) from e
         except httpx.TimeoutException as e:
-            raise OJSTimeoutError(
-                f"Request to OJS server timed out: {e}"
-            ) from e
+            raise OJSTimeoutError(f"Request to OJS server timed out: {e}") from e
 
         if response.status_code >= 400:
             body = response.json()
@@ -136,9 +134,7 @@ class HTTPTransport(Transport):
         return await self._request("POST", "/workers/ack", json=body)
 
     async def nack(self, job_id: str, error: dict[str, Any]) -> dict[str, Any]:
-        return await self._request(
-            "POST", "/workers/nack", json={"job_id": job_id, "error": error}
-        )
+        return await self._request("POST", "/workers/nack", json={"job_id": job_id, "error": error})
 
     async def heartbeat(
         self,
@@ -172,9 +168,7 @@ class HTTPTransport(Transport):
     # --- Workflow Operations ---
 
     async def create_workflow(self, definition: WorkflowDefinition) -> Workflow:
-        data = await self._request(
-            "POST", "/workflows", json=definition.to_dict()
-        )
+        data = await self._request("POST", "/workflows", json=definition.to_dict())
         return Workflow.from_dict(data["workflow"])
 
     async def get_workflow(self, workflow_id: str) -> Workflow:

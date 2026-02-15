@@ -36,9 +36,7 @@ class OJSAPIError(OJSError):
     def __init__(self, status_code: int, error: OJSErrorDetail) -> None:
         self.status_code = status_code
         self.error = error
-        super().__init__(
-            f"OJS API error {status_code}: [{error.code}] {error.message}"
-        )
+        super().__init__(f"OJS API error {status_code}: [{error.code}] {error.message}")
 
     @property
     def retryable(self) -> bool:

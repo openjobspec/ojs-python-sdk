@@ -8,16 +8,18 @@ from ojs.queue import Queue, QueueStats
 
 class TestEvent:
     def test_from_dict_with_utc_timestamp(self) -> None:
-        event = Event.from_dict({
-            "event": "job.completed",
-            "timestamp": "2025-02-12T10:30:00Z",
-            "data": {
-                "job_id": "j-001",
-                "job_type": "email.send",
-                "queue": "default",
-                "state": "completed",
-            },
-        })
+        event = Event.from_dict(
+            {
+                "event": "job.completed",
+                "timestamp": "2025-02-12T10:30:00Z",
+                "data": {
+                    "job_id": "j-001",
+                    "job_type": "email.send",
+                    "queue": "default",
+                    "state": "completed",
+                },
+            }
+        )
         assert event.event == "job.completed"
         assert event.timestamp == datetime(2025, 2, 12, 10, 30, tzinfo=UTC)
         assert event.job_id == "j-001"
@@ -26,19 +28,23 @@ class TestEvent:
         assert event.state == "completed"
 
     def test_from_dict_with_offset_timestamp(self) -> None:
-        event = Event.from_dict({
-            "event": "job.started",
-            "timestamp": "2025-02-12T10:30:00+05:00",
-            "data": {},
-        })
+        event = Event.from_dict(
+            {
+                "event": "job.started",
+                "timestamp": "2025-02-12T10:30:00+05:00",
+                "data": {},
+            }
+        )
         assert event.timestamp.utcoffset() is not None
         assert event.timestamp.utcoffset().total_seconds() == 5 * 3600
 
     def test_from_dict_empty_data(self) -> None:
-        event = Event.from_dict({
-            "event": "worker.started",
-            "timestamp": "2025-01-01T00:00:00Z",
-        })
+        event = Event.from_dict(
+            {
+                "event": "worker.started",
+                "timestamp": "2025-01-01T00:00:00Z",
+            }
+        )
         assert event.data == {}
         assert event.job_id is None
         assert event.job_type is None
@@ -46,19 +52,23 @@ class TestEvent:
         assert event.state is None
 
     def test_job_type_fallback_to_type_key(self) -> None:
-        event = Event.from_dict({
-            "event": "job.enqueued",
-            "timestamp": "2025-01-01T00:00:00Z",
-            "data": {"type": "notification.push"},
-        })
+        event = Event.from_dict(
+            {
+                "event": "job.enqueued",
+                "timestamp": "2025-01-01T00:00:00Z",
+                "data": {"type": "notification.push"},
+            }
+        )
         assert event.job_type == "notification.push"
 
     def test_job_type_prefers_job_type_over_type(self) -> None:
-        event = Event.from_dict({
-            "event": "job.enqueued",
-            "timestamp": "2025-01-01T00:00:00Z",
-            "data": {"job_type": "email.send", "type": "notification.push"},
-        })
+        event = Event.from_dict(
+            {
+                "event": "job.enqueued",
+                "timestamp": "2025-01-01T00:00:00Z",
+                "data": {"job_type": "email.send", "type": "notification.push"},
+            }
+        )
         assert event.job_type == "email.send"
 
 
@@ -97,11 +107,13 @@ class TestQueue:
         assert q.created_at is None
 
     def test_from_dict_with_all_fields(self) -> None:
-        q = Queue.from_dict({
-            "name": "email",
-            "status": "paused",
-            "created_at": "2025-02-12T08:00:00Z",
-        })
+        q = Queue.from_dict(
+            {
+                "name": "email",
+                "status": "paused",
+                "created_at": "2025-02-12T08:00:00Z",
+            }
+        )
         assert q.name == "email"
         assert q.status == "paused"
         assert q.created_at == datetime(2025, 2, 12, 8, 0, tzinfo=UTC)
@@ -113,23 +125,25 @@ class TestQueue:
 
 class TestQueueStats:
     def test_from_dict_with_stats(self) -> None:
-        stats = QueueStats.from_dict({
-            "queue": "default",
-            "status": "active",
-            "stats": {
-                "available": 100,
-                "active": 5,
-                "scheduled": 20,
-                "retryable": 2,
-                "discarded": 1,
-                "completed_last_hour": 500,
-                "failed_last_hour": 10,
-                "avg_duration_ms": 150.5,
-                "avg_wait_ms": 45.2,
-                "throughput_per_second": 8.3,
-            },
-            "computed_at": "2025-02-12T12:00:00Z",
-        })
+        stats = QueueStats.from_dict(
+            {
+                "queue": "default",
+                "status": "active",
+                "stats": {
+                    "available": 100,
+                    "active": 5,
+                    "scheduled": 20,
+                    "retryable": 2,
+                    "discarded": 1,
+                    "completed_last_hour": 500,
+                    "failed_last_hour": 10,
+                    "avg_duration_ms": 150.5,
+                    "avg_wait_ms": 45.2,
+                    "throughput_per_second": 8.3,
+                },
+                "computed_at": "2025-02-12T12:00:00Z",
+            }
+        )
         assert stats.queue == "default"
         assert stats.status == "active"
         assert stats.available == 100
@@ -145,10 +159,12 @@ class TestQueueStats:
         assert stats.computed_at == datetime(2025, 2, 12, 12, 0, tzinfo=UTC)
 
     def test_from_dict_empty_stats(self) -> None:
-        stats = QueueStats.from_dict({
-            "queue": "email",
-            "status": "paused",
-        })
+        stats = QueueStats.from_dict(
+            {
+                "queue": "email",
+                "status": "paused",
+            }
+        )
         assert stats.queue == "email"
         assert stats.available == 0
         assert stats.active == 0
@@ -156,11 +172,13 @@ class TestQueueStats:
         assert stats.computed_at is None
 
     def test_from_dict_partial_stats(self) -> None:
-        stats = QueueStats.from_dict({
-            "queue": "default",
-            "status": "active",
-            "stats": {"available": 42},
-        })
+        stats = QueueStats.from_dict(
+            {
+                "queue": "default",
+                "status": "active",
+                "stats": {"available": 42},
+            }
+        )
         assert stats.available == 42
         assert stats.active == 0
         assert stats.scheduled == 0

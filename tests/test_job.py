@@ -72,6 +72,7 @@ class TestUniquePolicy:
     def test_frozen(self) -> None:
         policy = UniquePolicy()
         import pytest
+
         with pytest.raises(AttributeError):
             policy.on_conflict = "replace"  # type: ignore[misc]
 
@@ -91,11 +92,13 @@ class TestUniquePolicy:
 
 class TestJobFromDict:
     def test_minimal_job(self) -> None:
-        job = Job.from_dict({
-            "id": "j-001",
-            "type": "email.send",
-            "state": "available",
-        })
+        job = Job.from_dict(
+            {
+                "id": "j-001",
+                "type": "email.send",
+                "state": "available",
+            }
+        )
         assert job.id == "j-001"
         assert job.type == "email.send"
         assert job.state == JobState.AVAILABLE
@@ -104,24 +107,26 @@ class TestJobFromDict:
         assert job.priority == 0
 
     def test_full_job(self) -> None:
-        job = Job.from_dict({
-            "id": "j-002",
-            "type": "report.generate",
-            "state": "active",
-            "args": [1, "pdf"],
-            "queue": "reports",
-            "meta": {"user_id": "u-123"},
-            "priority": 5,
-            "attempt": 2,
-            "max_attempts": 5,
-            "timeout_ms": 60000,
-            "tags": ["urgent", "pdf"],
-            "created_at": "2025-02-12T08:00:00Z",
-            "enqueued_at": "2025-02-12T08:00:01Z",
-            "started_at": "2025-02-12T08:00:05Z",
-            "result": None,
-            "errors": [{"code": "timeout", "message": "timed out"}],
-        })
+        job = Job.from_dict(
+            {
+                "id": "j-002",
+                "type": "report.generate",
+                "state": "active",
+                "args": [1, "pdf"],
+                "queue": "reports",
+                "meta": {"user_id": "u-123"},
+                "priority": 5,
+                "attempt": 2,
+                "max_attempts": 5,
+                "timeout_ms": 60000,
+                "tags": ["urgent", "pdf"],
+                "created_at": "2025-02-12T08:00:00Z",
+                "enqueued_at": "2025-02-12T08:00:01Z",
+                "started_at": "2025-02-12T08:00:05Z",
+                "result": None,
+                "errors": [{"code": "timeout", "message": "timed out"}],
+            }
+        )
         assert job.state == JobState.ACTIVE
         assert job.args == [1, "pdf"]
         assert job.queue == "reports"
@@ -136,60 +141,68 @@ class TestJobFromDict:
         assert len(job.errors) == 1
 
     def test_with_retry_policy(self) -> None:
-        job = Job.from_dict({
-            "id": "j-003",
-            "type": "test",
-            "state": "retryable",
-            "retry": {
-                "max_attempts": 5,
-                "initial_interval": "PT2S",
-                "backoff_coefficient": 3.0,
-                "max_interval": "PT10M",
-                "jitter": True,
-            },
-        })
+        job = Job.from_dict(
+            {
+                "id": "j-003",
+                "type": "test",
+                "state": "retryable",
+                "retry": {
+                    "max_attempts": 5,
+                    "initial_interval": "PT2S",
+                    "backoff_coefficient": 3.0,
+                    "max_interval": "PT10M",
+                    "jitter": True,
+                },
+            }
+        )
         assert job.retry is not None
         assert job.retry.max_attempts == 5
         assert job.retry.initial_interval == "PT2S"
         assert job.retry.backoff_coefficient == 3.0
 
     def test_with_unique_policy(self) -> None:
-        job = Job.from_dict({
-            "id": "j-004",
-            "type": "test",
-            "state": "available",
-            "unique": {
-                "key": ["type", "queue"],
-                "period": "PT5M",
-                "on_conflict": "replace",
-            },
-        })
+        job = Job.from_dict(
+            {
+                "id": "j-004",
+                "type": "test",
+                "state": "available",
+                "unique": {
+                    "key": ["type", "queue"],
+                    "period": "PT5M",
+                    "on_conflict": "replace",
+                },
+            }
+        )
         assert job.unique is not None
         assert job.unique.keys == ["type", "queue"]
         assert job.unique.period == "PT5M"
 
     def test_null_optional_fields(self) -> None:
-        job = Job.from_dict({
-            "id": "j-005",
-            "type": "test",
-            "state": "available",
-            "retry": None,
-            "unique": None,
-            "created_at": None,
-            "timeout_ms": None,
-        })
+        job = Job.from_dict(
+            {
+                "id": "j-005",
+                "type": "test",
+                "state": "available",
+                "retry": None,
+                "unique": None,
+                "created_at": None,
+                "timeout_ms": None,
+            }
+        )
         assert job.retry is None
         assert job.unique is None
         assert job.created_at is None
         assert job.timeout_ms is None
 
     def test_datetime_parsing_with_offset(self) -> None:
-        job = Job.from_dict({
-            "id": "j-006",
-            "type": "test",
-            "state": "completed",
-            "completed_at": "2025-02-12T15:30:00+05:30",
-        })
+        job = Job.from_dict(
+            {
+                "id": "j-006",
+                "type": "test",
+                "state": "completed",
+                "completed_at": "2025-02-12T15:30:00+05:30",
+            }
+        )
         assert job.completed_at is not None
         assert job.completed_at.utcoffset() is not None
 

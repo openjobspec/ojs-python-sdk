@@ -54,14 +54,10 @@ class EnqueueMiddlewareChain:
         """Remove a middleware from the chain."""
         self._middlewares.remove(middleware)
 
-    async def execute(
-        self, request: JobRequest, final: EnqueueNext
-    ) -> Job | None:
+    async def execute(self, request: JobRequest, final: EnqueueNext) -> Job | None:
         """Execute the middleware chain, ending with the final transport call."""
 
-        async def _build_chain(
-            middlewares: list[EnqueueMiddleware], req: JobRequest
-        ) -> Job | None:
+        async def _build_chain(middlewares: list[EnqueueMiddleware], req: JobRequest) -> Job | None:
             if not middlewares:
                 return await final(req)
 

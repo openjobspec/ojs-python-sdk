@@ -48,10 +48,12 @@ class TestEnqueue:
         assert job.args == []
 
     async def test_enqueue_batch(self, client: ojs.Client, transport: FakeTransport) -> None:
-        jobs = await client.enqueue_batch([
-            ojs.JobRequest(type="email.send", args=["a@b.com"]),
-            ojs.JobRequest(type="email.send", args=["c@d.com"]),
-        ])
+        jobs = await client.enqueue_batch(
+            [
+                ojs.JobRequest(type="email.send", args=["a@b.com"]),
+                ojs.JobRequest(type="email.send", args=["c@d.com"]),
+            ]
+        )
 
         assert len(jobs) == 2
         assert len(transport.pushed) == 2
@@ -87,20 +89,26 @@ class TestJobOperations:
 class TestWorkflow:
     async def test_create_chain_workflow(self, client: ojs.Client) -> None:
         wf = await client.workflow(
-            ojs.chain("test-chain", [
-                ojs.JobRequest(type="step.one", args=["a"]),
-                ojs.JobRequest(type="step.two", args=["b"]),
-            ])
+            ojs.chain(
+                "test-chain",
+                [
+                    ojs.JobRequest(type="step.one", args=["a"]),
+                    ojs.JobRequest(type="step.two", args=["b"]),
+                ],
+            )
         )
         assert wf.name == "test-chain"
         assert wf.state == "running"
 
     async def test_create_group_workflow(self, client: ojs.Client) -> None:
         wf = await client.workflow(
-            ojs.group("test-group", [
-                ojs.JobRequest(type="task.a", args=[1]),
-                ojs.JobRequest(type="task.b", args=[2]),
-            ])
+            ojs.group(
+                "test-group",
+                [
+                    ojs.JobRequest(type="task.a", args=[1]),
+                    ojs.JobRequest(type="task.b", args=[2]),
+                ],
+            )
         )
         assert wf.name == "test-group"
 

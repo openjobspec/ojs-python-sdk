@@ -61,17 +61,13 @@ class TestHTTPTransportInit:
 
 
 class TestPush:
-    async def test_push_job(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_push_job(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/jobs",
             method="POST",
             json={"job": JOB_RESPONSE},
         )
-        job = await transport.push(
-            {"type": "email.send", "args": ["user@example.com"]}
-        )
+        job = await transport.push({"type": "email.send", "args": ["user@example.com"]})
         assert job.id == JOB_RESPONSE["id"]
         assert job.type == "email.send"
         assert job.state == ojs.JobState.AVAILABLE
@@ -93,9 +89,7 @@ class TestPush:
 
 
 class TestPushBatch:
-    async def test_push_batch(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_push_batch(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/jobs/batch",
             method="POST",
@@ -106,19 +100,19 @@ class TestPushBatch:
                 ]
             },
         )
-        jobs = await transport.push_batch([
-            {"type": "email.send", "args": ["a@b.com"]},
-            {"type": "email.send", "args": ["c@d.com"]},
-        ])
+        jobs = await transport.push_batch(
+            [
+                {"type": "email.send", "args": ["a@b.com"]},
+                {"type": "email.send", "args": ["c@d.com"]},
+            ]
+        )
         assert len(jobs) == 2
         assert jobs[0].id == JOB_RESPONSE["id"]
         assert jobs[1].id == "019463ab-0002"
 
 
 class TestInfo:
-    async def test_get_job(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_get_job(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         job_id = JOB_RESPONSE["id"]
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/jobs/{job_id}",
@@ -131,9 +125,7 @@ class TestInfo:
 
 
 class TestCancel:
-    async def test_cancel_job(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_cancel_job(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         job_id = JOB_RESPONSE["id"]
         cancelled = {**JOB_RESPONSE, "state": "cancelled"}
         httpx_mock.add_response(
@@ -146,9 +138,7 @@ class TestCancel:
 
 
 class TestFetch:
-    async def test_fetch_jobs(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_fetch_jobs(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         active_job = {**JOB_RESPONSE, "state": "active", "attempt": 1}
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/workers/fetch",
@@ -159,9 +149,7 @@ class TestFetch:
         assert len(jobs) == 1
         assert jobs[0].state == ojs.JobState.ACTIVE
 
-    async def test_fetch_empty(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_fetch_empty(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/workers/fetch",
             method="POST",
@@ -203,9 +191,7 @@ class TestAck:
         resp = await transport.ack("job-123")
         assert resp["state"] == "completed"
 
-    async def test_ack_with_result(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_ack_with_result(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/workers/ack",
             method="POST",
@@ -220,9 +206,7 @@ class TestAck:
 
 
 class TestNack:
-    async def test_nack(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_nack(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/workers/nack",
             method="POST",
@@ -238,9 +222,7 @@ class TestNack:
 
 
 class TestHeartbeat:
-    async def test_heartbeat(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_heartbeat(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/workers/heartbeat",
             method="POST",
@@ -256,9 +238,7 @@ class TestHeartbeat:
 
 
 class TestQueueOperations:
-    async def test_list_queues(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_list_queues(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/queues",
             method="GET",
@@ -274,9 +254,7 @@ class TestQueueOperations:
         assert queues[0].name == "default"
         assert queues[1].status == "paused"
 
-    async def test_queue_stats(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_queue_stats(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/queues/default/stats",
             method="GET",
@@ -296,9 +274,7 @@ class TestQueueOperations:
         assert stats.active == 3
         assert stats.completed_last_hour == 50
 
-    async def test_pause_queue(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_pause_queue(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/queues/email/pause",
             method="POST",
@@ -307,9 +283,7 @@ class TestQueueOperations:
         resp = await transport.pause_queue("email")
         assert resp["status"] == "paused"
 
-    async def test_resume_queue(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_resume_queue(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/queues/email/resume",
             method="POST",
@@ -320,9 +294,7 @@ class TestQueueOperations:
 
 
 class TestWorkflowOperations:
-    async def test_create_workflow(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_create_workflow(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/workflows",
             method="POST",
@@ -350,9 +322,7 @@ class TestWorkflowOperations:
         definition = WorkflowDefinition(
             name="my-chain",
             steps=[
-                WorkflowStep(
-                    id="step-1", type="email.send", args=["a@b.com"]
-                ),
+                WorkflowStep(id="step-1", type="email.send", args=["a@b.com"]),
                 WorkflowStep(
                     id="step-2",
                     type="notify",
@@ -366,9 +336,7 @@ class TestWorkflowOperations:
         assert wf.name == "my-chain"
         assert len(wf.steps) == 2
 
-    async def test_get_workflow(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_get_workflow(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/workflows/wf-001",
             method="GET",
@@ -384,9 +352,7 @@ class TestWorkflowOperations:
         wf = await transport.get_workflow("wf-001")
         assert wf.state == "completed"
 
-    async def test_cancel_workflow(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_cancel_workflow(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/workflows/wf-001",
             method="DELETE",
@@ -397,9 +363,7 @@ class TestWorkflowOperations:
 
 
 class TestHealth:
-    async def test_health_check(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_health_check(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/health",
             method="GET",
@@ -410,16 +374,12 @@ class TestHealth:
 
 
 class TestErrorHandling:
-    async def test_connection_error(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_connection_error(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_exception(httpx.ConnectError("connection refused"))
         with pytest.raises(ojs.OJSConnectionError, match="Failed to connect"):
             await transport.push({"type": "test", "args": []})
 
-    async def test_timeout_error(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_timeout_error(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_exception(httpx.ReadTimeout("read timeout"))
         with pytest.raises(ojs.OJSTimeoutError, match="timed out"):
             await transport.push({"type": "test", "args": []})

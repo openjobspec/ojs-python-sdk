@@ -60,9 +60,7 @@ class Client:
         headers: dict[str, str] | None = None,
         transport: Transport | None = None,
     ) -> None:
-        self._transport = transport or HTTPTransport(
-            url, timeout=timeout, headers=headers
-        )
+        self._transport = transport or HTTPTransport(url, timeout=timeout, headers=headers)
         self._enqueue_middleware = EnqueueMiddlewareChain()
 
     async def __aenter__(self) -> Client:
@@ -308,14 +306,10 @@ class SyncClient:
         return self._loop
 
     def enqueue(self, job_type: str, args: list[Any] | None = None, **kwargs: Any) -> Job:
-        return self._get_loop().run_until_complete(
-            self._client.enqueue(job_type, args, **kwargs)
-        )
+        return self._get_loop().run_until_complete(self._client.enqueue(job_type, args, **kwargs))
 
     def enqueue_batch(self, requests: list[JobRequest]) -> list[Job]:
-        return self._get_loop().run_until_complete(
-            self._client.enqueue_batch(requests)
-        )
+        return self._get_loop().run_until_complete(self._client.enqueue_batch(requests))
 
     def get_job(self, job_id: str) -> Job:
         return self._get_loop().run_until_complete(self._client.get_job(job_id))
@@ -349,9 +343,7 @@ class SyncClient:
         return self._get_loop().run_until_complete(self._client.get_workflow(workflow_id))
 
     def cancel_workflow(self, workflow_id: str) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(
-            self._client.cancel_workflow(workflow_id)
-        )
+        return self._get_loop().run_until_complete(self._client.cancel_workflow(workflow_id))
 
     # --- Lifecycle ---
 

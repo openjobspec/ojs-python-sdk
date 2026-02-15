@@ -37,23 +37,25 @@ async def main() -> None:
         print(f"Enqueued delayed job: {job.id} (state: {job.state.value})")
 
         # Batch enqueue
-        jobs = await client.enqueue_batch([
-            ojs.JobRequest(
-                type="email.send",
-                args=["alice@example.com", "welcome"],
-                queue="email",
-            ),
-            ojs.JobRequest(
-                type="email.send",
-                args=["bob@example.com", "welcome"],
-                queue="email",
-            ),
-            ojs.JobRequest(
-                type="email.send",
-                args=["carol@example.com", "welcome"],
-                queue="email",
-            ),
-        ])
+        jobs = await client.enqueue_batch(
+            [
+                ojs.JobRequest(
+                    type="email.send",
+                    args=["alice@example.com", "welcome"],
+                    queue="email",
+                ),
+                ojs.JobRequest(
+                    type="email.send",
+                    args=["bob@example.com", "welcome"],
+                    queue="email",
+                ),
+                ojs.JobRequest(
+                    type="email.send",
+                    args=["carol@example.com", "welcome"],
+                    queue="email",
+                ),
+            ]
+        )
         print(f"Enqueued batch of {len(jobs)} jobs")
 
         # Check job status

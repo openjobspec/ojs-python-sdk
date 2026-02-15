@@ -59,10 +59,10 @@ class TestRetryPolicy:
             max_interval="PT5M",
             jitter=False,
         )
-        assert policy.delay_for_attempt(1) == 1.0   # 1 * 2^0
-        assert policy.delay_for_attempt(2) == 2.0   # 1 * 2^1
-        assert policy.delay_for_attempt(3) == 4.0   # 1 * 2^2
-        assert policy.delay_for_attempt(4) == 8.0   # 1 * 2^3
+        assert policy.delay_for_attempt(1) == 1.0  # 1 * 2^0
+        assert policy.delay_for_attempt(2) == 2.0  # 1 * 2^1
+        assert policy.delay_for_attempt(3) == 4.0  # 1 * 2^2
+        assert policy.delay_for_attempt(4) == 8.0  # 1 * 2^3
         assert policy.delay_for_attempt(5) == 16.0  # 1 * 2^4
 
     def test_delay_capped_at_max_interval(self) -> None:
