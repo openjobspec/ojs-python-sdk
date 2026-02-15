@@ -1,5 +1,10 @@
 # ojs-python-sdk
 
+[![CI](https://github.com/openjobspec/ojs-python-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/openjobspec/ojs-python-sdk/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/openjobspec)](https://pypi.org/project/openjobspec/)
+[![Python versions](https://img.shields.io/pypi/pyversions/openjobspec)](https://pypi.org/project/openjobspec/)
+[![License](https://img.shields.io/github/license/openjobspec/ojs-python-sdk)](LICENSE)
+
 The official Python SDK for [Open Job Spec (OJS)](https://openjobspec.org) -- a language-agnostic standard for background job processing.
 
 ## Features
