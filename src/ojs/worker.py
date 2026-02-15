@@ -87,9 +87,7 @@ class Worker:
             headers: Additional HTTP headers.
             transport: Optional pre-configured transport.
         """
-        self._transport = transport or HTTPTransport(
-            url, timeout=timeout, headers=headers
-        )
+        self._transport = transport or HTTPTransport(url, timeout=timeout, headers=headers)
         self._queues = queues or ["default"]
         self._concurrency = concurrency
         self._poll_interval = poll_interval
@@ -163,6 +161,13 @@ class Worker:
 
         Blocks until shutdown is triggered (via signal or explicit stop).
         """
+        if not self._handlers:
+            logger.warning(
+                "Worker %s starting with no registered handlers. "
+                "Jobs will be nack'd with 'handler_error'.",
+                self._worker_id,
+            )
+
         self._state = WorkerState.RUNNING
         self._semaphore = asyncio.Semaphore(self._concurrency)
 
@@ -214,9 +219,7 @@ class Worker:
             )
             grace_period = 25.0  # OJS spec: 25s grace period
             try:
-                await asyncio.wait_for(
-                    self._wait_active_jobs(), timeout=grace_period
-                )
+                await asyncio.wait_for(self._wait_active_jobs(), timeout=grace_period)
             except TimeoutError:
                 logger.warning(
                     "Grace period expired, %d jobs still active",
@@ -279,6 +282,7 @@ class Worker:
     def _make_done_callback(self, job_id: str) -> Callable[[asyncio.Task[Any]], None]:
         def _callback(task: asyncio.Task[Any]) -> None:
             self._job_done(job_id)
+
         return _callback
 
     def _job_done(self, job_id: str) -> None:
