@@ -22,6 +22,8 @@ class FakeTransport(Transport):
         self.nacked: list[dict[str, Any]] = []
         self.fetched_count = 0
         self._fetch_jobs: list[Job] = []
+        self._heartbeat_responses: list[dict[str, Any]] = []
+        self._fetch_error: Exception | None = None
         self.push_response: dict[str, Any] = {
             "id": "019539a4-b68c-7def-8000-1a2b3c4d5e6f",
             "type": "test.echo",
@@ -35,6 +37,12 @@ class FakeTransport(Transport):
     def set_fetch_jobs(self, jobs: list[Job]) -> None:
         self._fetch_jobs = list(jobs)
 
+    def set_fetch_error(self, error: Exception) -> None:
+        self._fetch_error = error
+
+    def set_heartbeat_responses(self, responses: list[dict[str, Any]]) -> None:
+        self._heartbeat_responses = list(responses)
+
     async def push(self, body: dict[str, Any]) -> Job:
         self.pushed.append(body)
         response = {
@@ -47,28 +55,34 @@ class FakeTransport(Transport):
     async def push_batch(self, jobs: list[dict[str, Any]]) -> list[Job]:
         self.pushed.extend(jobs)
         return [
-            Job.from_dict({
-                **self.push_response,
-                "id": f"019539a4-b68c-7def-8000-{i:012x}",
-                "type": j["type"],
-                "args": j["args"],
-            })
+            Job.from_dict(
+                {
+                    **self.push_response,
+                    "id": f"019539a4-b68c-7def-8000-{i:012x}",
+                    "type": j["type"],
+                    "args": j["args"],
+                }
+            )
             for i, j in enumerate(jobs)
         ]
 
     async def info(self, job_id: str) -> Job:
-        return Job.from_dict({
-            **self.push_response,
-            "id": job_id,
-            "state": "completed",
-        })
+        return Job.from_dict(
+            {
+                **self.push_response,
+                "id": job_id,
+                "state": "completed",
+            }
+        )
 
     async def cancel(self, job_id: str) -> Job:
-        return Job.from_dict({
-            **self.push_response,
-            "id": job_id,
-            "state": "cancelled",
-        })
+        return Job.from_dict(
+            {
+                **self.push_response,
+                "id": job_id,
+                "state": "cancelled",
+            }
+        )
 
     async def fetch(
         self,
@@ -78,21 +92,21 @@ class FakeTransport(Transport):
         visibility_timeout_ms: int = 30000,
     ) -> list[Job]:
         self.fetched_count += 1
+        if self._fetch_error is not None:
+            err = self._fetch_error
+            self._fetch_error = None
+            raise err
         if self._fetch_jobs:
             jobs = self._fetch_jobs[:count]
             self._fetch_jobs = self._fetch_jobs[count:]
             return jobs
         return []
 
-    async def ack(
-        self, job_id: str, result: Any = None
-    ) -> dict[str, Any]:
+    async def ack(self, job_id: str, result: Any = None) -> dict[str, Any]:
         self.acked.append({"job_id": job_id, "result": result})
         return {"acknowledged": True, "job_id": job_id, "state": "completed"}
 
-    async def nack(
-        self, job_id: str, error: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def nack(self, job_id: str, error: dict[str, Any]) -> dict[str, Any]:
         self.nacked.append({"job_id": job_id, "error": error})
         return {"job_id": job_id, "state": "retryable"}
 
@@ -102,6 +116,8 @@ class FakeTransport(Transport):
         active_jobs: list[str] | None = None,
         visibility_timeout_ms: int | None = None,
     ) -> dict[str, Any]:
+        if self._heartbeat_responses:
+            return self._heartbeat_responses.pop(0)
         return {"state": "running", "jobs_extended": active_jobs or []}
 
     async def list_queues(self) -> list[ojs.Queue]:
@@ -116,19 +132,13 @@ class FakeTransport(Transport):
     async def resume_queue(self, queue_name: str) -> dict[str, Any]:
         return {"queue": queue_name, "status": "active"}
 
-    async def create_workflow(
-        self, definition: Any
-    ) -> ojs.Workflow:
-        return ojs.Workflow(
-            id="wf-123", name=definition.name, state="running"
-        )
+    async def create_workflow(self, definition: Any) -> ojs.Workflow:
+        return ojs.Workflow(id="wf-123", name=definition.name, state="running")
 
     async def get_workflow(self, workflow_id: str) -> ojs.Workflow:
         return ojs.Workflow(id=workflow_id, name="test", state="running")
 
-    async def cancel_workflow(
-        self, workflow_id: str
-    ) -> dict[str, Any]:
+    async def cancel_workflow(self, workflow_id: str) -> dict[str, Any]:
         return {"workflow": {"id": workflow_id, "state": "cancelled"}}
 
     async def health(self) -> dict[str, Any]:
