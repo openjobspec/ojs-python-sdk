@@ -120,7 +120,7 @@ def chain(
     for i, job in enumerate(jobs):
         step_id = f"step-{i}"
         depends = [f"step-{i - 1}"] if i > 0 else []
-        step_options = {}
+        step_options: dict[str, Any] = {}
         if job.queue != "default":
             step_options["queue"] = job.queue
         if job.retry:
@@ -157,7 +157,7 @@ def group(
     """
     steps: list[WorkflowStep] = []
     for i, job in enumerate(jobs):
-        step_options = {}
+        step_options: dict[str, Any] = {}
         if job.queue != "default":
             step_options["queue"] = job.queue
         if job.retry:
@@ -205,7 +205,7 @@ def batch(
     for i, job in enumerate(jobs):
         step_id = f"step-{i}"
         parallel_ids.append(step_id)
-        step_options = {}
+        step_options: dict[str, Any] = {}
         if job.queue != "default":
             step_options["queue"] = job.queue
         if job.retry:

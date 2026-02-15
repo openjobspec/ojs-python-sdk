@@ -6,10 +6,10 @@ OpenTelemetry traces and metrics, following the OJS Observability spec.
 
 Usage::
 
-    from ojs import OJSWorker
+    from ojs import Worker
     from ojs.otel import opentelemetry_middleware
 
-    worker = OJSWorker(url="http://localhost:8080", queues=["default"])
+    worker = Worker("http://localhost:8080", queues=["default"])
     worker.add_middleware(opentelemetry_middleware())
 
 Prerequisites::
@@ -31,7 +31,7 @@ INSTRUMENTATION_NAME = "ojs-python-sdk"
 def opentelemetry_middleware(
     tracer_provider: Any | None = None,
     meter_provider: Any | None = None,
-) -> Callable:
+) -> Callable[..., Any]:
     """Create OpenTelemetry execution middleware.
 
     Creates a CONSUMER span for each job and records:
@@ -47,8 +47,8 @@ def opentelemetry_middleware(
         Async execution middleware function.
     """
     try:
-        from opentelemetry import metrics, trace  # type: ignore[import-untyped]
-        from opentelemetry.trace import SpanKind, StatusCode  # type: ignore[import-untyped]
+        from opentelemetry import metrics, trace  # type: ignore[import-not-found]
+        from opentelemetry.trace import SpanKind, StatusCode  # type: ignore[import-not-found]
     except ImportError as err:
         raise ImportError(
             "opentelemetry-api is required for OTel middleware. "

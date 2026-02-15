@@ -9,6 +9,7 @@ from __future__ import annotations
 import random
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 
 def _parse_iso8601_duration(duration: str) -> float:
@@ -26,9 +27,7 @@ def _parse_iso8601_duration(duration: str) -> float:
         >>> _parse_iso8601_duration("P1DT12H")
         129600.0
     """
-    pattern = re.compile(
-        r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$"
-    )
+    pattern = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$")
     match = pattern.match(duration)
     if not match:
         raise ValueError(f"Invalid ISO 8601 duration: {duration!r}")
@@ -114,9 +113,9 @@ class RetryPolicy:
 
         return delay
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to the OJS JSON wire format."""
-        d: dict = {
+        d: dict[str, Any] = {
             "max_attempts": self.max_attempts,
             "initial_interval": self.initial_interval,
             "backoff_coefficient": self.backoff_coefficient,
@@ -128,7 +127,7 @@ class RetryPolicy:
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> RetryPolicy:
+    def from_dict(cls, data: dict[str, Any]) -> RetryPolicy:
         """Deserialize from the OJS JSON wire format."""
         return cls(
             max_attempts=data.get("max_attempts", 3),

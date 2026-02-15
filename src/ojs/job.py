@@ -50,13 +50,11 @@ class UniquePolicy:
     args_keys: list[str] | None = None
     meta_keys: list[str] | None = None
     period: str | None = None
-    states: list[str] = field(
-        default_factory=lambda: ["available", "active", "scheduled"]
-    )
+    states: list[str] = field(default_factory=lambda: ["available", "active", "scheduled"])
     on_conflict: str = "reject"
 
-    def to_dict(self) -> dict:
-        d: dict = {"on_conflict": self.on_conflict}
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"on_conflict": self.on_conflict}
         if self.keys:
             d["key"] = self.keys
         if self.period:
@@ -66,7 +64,7 @@ class UniquePolicy:
         return d
 
     @classmethod
-    def from_dict(cls, data: dict) -> UniquePolicy:
+    def from_dict(cls, data: dict[str, Any]) -> UniquePolicy:
         return cls(
             keys=data.get("key", ["type", "queue", "args"]),
             period=data.get("period"),
