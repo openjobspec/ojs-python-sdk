@@ -1,4 +1,4 @@
-.PHONY: install test lint typecheck check clean coverage
+.PHONY: install test lint format typecheck check clean coverage
 
 install:
 	pip install -e ".[dev]"
@@ -11,6 +11,11 @@ coverage:
 
 lint:
 	ruff check .
+	ruff format --check .
+
+format:
+	ruff format .
+	ruff check --fix .
 
 typecheck:
 	mypy src/

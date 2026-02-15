@@ -24,7 +24,8 @@ pip install -e ".[dev]"
 make check
 
 # Run individually
-make lint        # ruff check .
+make lint        # ruff check + ruff format --check
+make format      # auto-format with ruff
 make typecheck   # mypy src/
 make test        # pytest
 make coverage    # pytest with coverage report
@@ -32,7 +33,7 @@ make coverage    # pytest with coverage report
 
 ## Code Style
 
-- **Formatting**: [Ruff](https://docs.astral.sh/ruff/) for linting (100-char line limit)
+- **Formatting**: [Ruff](https://docs.astral.sh/ruff/) for linting and formatting (100-char line limit)
 - **Type hints**: Complete type annotations on all public APIs; `mypy --strict`
 - **Docstrings**: Google-style docstrings on public classes and methods
 - **Imports**: Use `from __future__ import annotations` in all modules
