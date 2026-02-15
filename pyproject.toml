@@ -61,6 +61,7 @@ source = ["ojs"]
 omit = ["src/ojs/otel.py"]
 
 [tool.coverage.report]
+fail_under = 80
 show_missing = true
 skip_empty = true
 exclude_lines = [
