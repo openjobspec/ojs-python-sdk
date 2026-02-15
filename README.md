@@ -152,6 +152,12 @@ with ojs.SyncClient("http://localhost:8080") as client:
 - Python 3.11+
 - An OJS-compatible server (e.g., [ojs-backend-redis](https://github.com/openjobspec/ojs-backend-redis))
 
+## Resources
+
+- [OJS Specification](https://github.com/openjobspec/spec) — the language-agnostic standard
+- [OJS Playground](https://github.com/openjobspec/ojs-playground) — interactive browser-based environment
+- [openjobspec.org](https://openjobspec.org) — documentation and guides
+
 ## Development
 
 ```bash
