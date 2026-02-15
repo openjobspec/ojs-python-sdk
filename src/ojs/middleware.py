@@ -6,7 +6,8 @@ execution middleware (worker-side, nested/onion pattern).
 
 from __future__ import annotations
 
-from typing import Any, Callable, Coroutine
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from ojs.job import Job, JobContext, JobRequest
 

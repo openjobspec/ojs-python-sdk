@@ -40,10 +40,7 @@ class Event:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Event:
         ts = data.get("timestamp", "")
-        if isinstance(ts, str):
-            timestamp = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        else:
-            timestamp = ts
+        timestamp = datetime.fromisoformat(ts.replace("Z", "+00:00")) if isinstance(ts, str) else ts
         return cls(
             event=data["event"],
             timestamp=timestamp,

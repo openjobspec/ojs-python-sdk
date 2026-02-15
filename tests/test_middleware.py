@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ojs
 from ojs.job import Job, JobContext, JobRequest, JobState
 from ojs.middleware import EnqueueMiddlewareChain, ExecutionMiddlewareChain
 

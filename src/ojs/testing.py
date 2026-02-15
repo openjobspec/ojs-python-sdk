@@ -19,11 +19,11 @@ Usage::
 
 from __future__ import annotations
 
-import uuid
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Generator
+from datetime import UTC, datetime
+from typing import Any
 
 
 @dataclass
@@ -42,7 +42,7 @@ class FakeJob:
 
     def __post_init__(self) -> None:
         if not self.created_at:
-            self.created_at = datetime.now(timezone.utc).isoformat()
+            self.created_at = datetime.now(UTC).isoformat()
 
 
 class FakeStore:
@@ -169,13 +169,17 @@ def assert_performed(job_type: str) -> None:
     store = _get_store()
     matches = [j for j in store.performed if j.type == job_type]
     if not matches:
-        raise AssertionError(f"Expected at least one performed job of type '{job_type}', found none.")
+        raise AssertionError(
+            f"Expected at least one performed job of type '{job_type}', found none."
+        )
 
 
 def assert_completed(job_type: str) -> None:
     """Assert that at least one job of the given type completed successfully."""
     store = _get_store()
-    match = next((j for j in store.performed if j.type == job_type and j.state == "completed"), None)
+    match = next(
+        (j for j in store.performed if j.type == job_type and j.state == "completed"), None
+    )
     if not match:
         raise AssertionError(f"Expected a completed job of type '{job_type}', found none.")
 
@@ -183,7 +187,9 @@ def assert_completed(job_type: str) -> None:
 def assert_failed(job_type: str) -> None:
     """Assert that at least one job of the given type failed."""
     store = _get_store()
-    match = next((j for j in store.performed if j.type == job_type and j.state == "discarded"), None)
+    match = next(
+        (j for j in store.performed if j.type == job_type and j.state == "discarded"), None
+    )
     if not match:
         raise AssertionError(f"Expected a failed job of type '{job_type}', found none.")
 
@@ -253,8 +259,7 @@ def _find_matching(
             continue
         if args is not None and j.args != args:
             continue
-        if meta:
-            if not all(j.meta.get(k) == v for k, v in meta.items()):
-                continue
+        if meta and not all(j.meta.get(k) == v for k, v in meta.items()):
+            continue
         result.append(j)
     return result

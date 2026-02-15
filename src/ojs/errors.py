@@ -5,6 +5,7 @@ Maps the standard OJS error codes to Python exceptions.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -89,7 +90,11 @@ class RateLimitedError(OJSAPIError):
         self.retry_after = retry_after
 
 
-def raise_for_error(status_code: int, body: dict[str, Any], headers: dict[str, str] | None = None) -> None:
+def raise_for_error(
+    status_code: int,
+    body: dict[str, Any],
+    headers: dict[str, str] | None = None,
+) -> None:
     """Parse an OJS error response and raise the appropriate exception."""
     error_data = body.get("error", {})
     detail = OJSErrorDetail(
@@ -111,10 +116,8 @@ def raise_for_error(status_code: int, body: dict[str, Any], headers: dict[str, s
         if headers:
             raw = headers.get("retry-after")
             if raw is not None:
-                try:
+                with contextlib.suppress(ValueError):
                     retry_after = float(raw)
-                except ValueError:
-                    pass
         raise RateLimitedError(status_code, detail, retry_after=retry_after)
 
     raise OJSAPIError(status_code, detail)

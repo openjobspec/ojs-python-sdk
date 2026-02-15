@@ -22,7 +22,8 @@ See: spec/ojs-observability.md
 from __future__ import annotations
 
 import time
-from typing import Any, Callable, Coroutine
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 INSTRUMENTATION_NAME = "ojs-python-sdk"
 
@@ -46,13 +47,13 @@ def opentelemetry_middleware(
         Async execution middleware function.
     """
     try:
-        from opentelemetry import trace, metrics  # type: ignore[import-untyped]
-        from opentelemetry.trace import StatusCode, SpanKind  # type: ignore[import-untyped]
-    except ImportError:
+        from opentelemetry import metrics, trace  # type: ignore[import-untyped]
+        from opentelemetry.trace import SpanKind, StatusCode  # type: ignore[import-untyped]
+    except ImportError as err:
         raise ImportError(
             "opentelemetry-api is required for OTel middleware. "
             "Install it with: pip install opentelemetry-api"
-        )
+        ) from err
 
     tp = tracer_provider or trace.get_tracer_provider()
     mp = meter_provider or metrics.get_meter_provider()
