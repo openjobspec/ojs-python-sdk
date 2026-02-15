@@ -38,6 +38,9 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
 ]
+docs = [
+    "pdoc>=14.0",
+]
 
 [project.urls]
 Homepage = "https://openjobspec.org"
