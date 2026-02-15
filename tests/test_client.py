@@ -2,91 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import AsyncMock
-
 import pytest
 
 import ojs
-from ojs.transport.base import Transport
-
-
-class FakeTransport(Transport):
-    """In-memory fake transport for testing."""
-
-    def __init__(self) -> None:
-        self.pushed: list[dict[str, Any]] = []
-        self.push_response: dict[str, Any] = {
-            "id": "019539a4-b68c-7def-8000-1a2b3c4d5e6f",
-            "type": "test.echo",
-            "state": "available",
-            "args": [],
-            "queue": "default",
-            "created_at": "2026-02-12T10:00:00.000Z",
-            "enqueued_at": "2026-02-12T10:00:00.123Z",
-        }
-
-    async def push(self, body: dict[str, Any]) -> ojs.Job:
-        self.pushed.append(body)
-        response = {**self.push_response, **{"type": body["type"], "args": body["args"]}}
-        return ojs.Job.from_dict(response)
-
-    async def push_batch(self, jobs: list[dict[str, Any]]) -> list[ojs.Job]:
-        self.pushed.extend(jobs)
-        return [
-            ojs.Job.from_dict({
-                **self.push_response,
-                "id": f"019539a4-b68c-7def-8000-{i:012x}",
-                "type": j["type"],
-                "args": j["args"],
-            })
-            for i, j in enumerate(jobs)
-        ]
-
-    async def info(self, job_id: str) -> ojs.Job:
-        return ojs.Job.from_dict({**self.push_response, "id": job_id, "state": "completed"})
-
-    async def cancel(self, job_id: str) -> ojs.Job:
-        return ojs.Job.from_dict({**self.push_response, "id": job_id, "state": "cancelled"})
-
-    async def fetch(self, queues, count=1, worker_id=None, visibility_timeout_ms=30000):
-        return []
-
-    async def ack(self, job_id, result=None):
-        return {"acknowledged": True, "job_id": job_id, "state": "completed"}
-
-    async def nack(self, job_id, error):
-        return {"job_id": job_id, "state": "retryable"}
-
-    async def heartbeat(self, worker_id, active_jobs=None, visibility_timeout_ms=None):
-        return {"state": "running", "jobs_extended": active_jobs or []}
-
-    async def list_queues(self):
-        return [ojs.Queue(name="default", status="active")]
-
-    async def queue_stats(self, queue_name):
-        return ojs.QueueStats(queue=queue_name, status="active")
-
-    async def pause_queue(self, queue_name):
-        return {"queue": queue_name, "status": "paused"}
-
-    async def resume_queue(self, queue_name):
-        return {"queue": queue_name, "status": "active"}
-
-    async def create_workflow(self, definition):
-        return ojs.Workflow(id="wf-123", name=definition.name, state="running")
-
-    async def get_workflow(self, workflow_id):
-        return ojs.Workflow(id=workflow_id, name="test", state="running")
-
-    async def cancel_workflow(self, workflow_id):
-        return {"workflow": {"id": workflow_id, "state": "cancelled"}}
-
-    async def health(self):
-        return {"status": "ok"}
-
-    async def close(self):
-        pass
+from tests.conftest import FakeTransport
 
 
 @pytest.fixture
@@ -148,7 +67,7 @@ class TestEnqueueMiddleware:
             request.meta["trace_id"] = "abc123"
             return await next(request)
 
-        job = await client.enqueue("test.echo", ["hello"])
+        await client.enqueue("test.echo", ["hello"])
 
         body = transport.pushed[0]
         assert body["meta"]["trace_id"] == "abc123"
