@@ -10,7 +10,7 @@ import asyncio
 from typing import Any
 
 from ojs.errors import OJSError
-from ojs.job import Job, JobRequest
+from ojs.job import Job, JobRequest, JobState
 from ojs.middleware import EnqueueMiddleware, EnqueueMiddlewareChain
 from ojs.queue import Queue, QueueStats
 from ojs.retry import RetryPolicy
@@ -142,6 +142,27 @@ class Client:
             schema=schema,
         )
 
+        # In fake mode, record the enqueue without hitting the transport
+        from ojs.testing import get_store
+
+        store = get_store()
+        if store is not None:
+            fake_job = store.record_enqueue(
+                job_type=job_type,
+                args=args or [],
+                queue=queue,
+                meta=meta,
+                options=request.to_dict().get("options", {}),
+            )
+            return Job(
+                id=fake_job.id,
+                type=fake_job.type,
+                state=JobState.AVAILABLE,
+                args=fake_job.args,
+                queue=fake_job.queue,
+                meta=fake_job.meta,
+            )
+
         async def _push(req: JobRequest) -> Job | None:
             return await self._transport.push(req.to_dict())
 
@@ -159,6 +180,31 @@ class Client:
         Returns:
             List of created Jobs.
         """
+        from ojs.testing import get_store
+
+        store = get_store()
+        if store is not None:
+            jobs: list[Job] = []
+            for req in requests:
+                fake_job = store.record_enqueue(
+                    job_type=req.type,
+                    args=req.args,
+                    queue=req.queue,
+                    meta=req.meta,
+                    options=req.to_dict().get("options", {}),
+                )
+                jobs.append(
+                    Job(
+                        id=fake_job.id,
+                        type=fake_job.type,
+                        state=JobState.AVAILABLE,
+                        args=fake_job.args,
+                        queue=fake_job.queue,
+                        meta=fake_job.meta or {},
+                    )
+                )
+            return jobs
+
         bodies = [r.to_dict() for r in requests]
         return await self._transport.push_batch(bodies)
 
