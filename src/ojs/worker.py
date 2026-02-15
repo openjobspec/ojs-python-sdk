@@ -13,7 +13,8 @@ import logging
 import signal
 import traceback
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ojs.job import Job, JobContext, JobHandler
 from ojs.middleware import ExecutionMiddleware, ExecutionMiddlewareChain
@@ -216,7 +217,7 @@ class Worker:
                 await asyncio.wait_for(
                     self._wait_active_jobs(), timeout=grace_period
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "Grace period expired, %d jobs still active",
                     len(self._active_jobs),
@@ -245,12 +246,16 @@ class Worker:
                     self._semaphore.release()
                     break
 
-                jobs = await self._transport.fetch(
-                    queues=self._queues,
-                    count=1,
-                    worker_id=self._worker_id,
-                    visibility_timeout_ms=self._visibility_timeout_ms,
-                )
+                try:
+                    jobs = await self._transport.fetch(
+                        queues=self._queues,
+                        count=1,
+                        worker_id=self._worker_id,
+                        visibility_timeout_ms=self._visibility_timeout_ms,
+                    )
+                except Exception:
+                    self._semaphore.release()
+                    raise
 
                 if not jobs:
                     self._semaphore.release()
