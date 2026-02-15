@@ -326,6 +326,35 @@ class SyncClient:
     def health(self) -> dict[str, Any]:
         return self._get_loop().run_until_complete(self._client.health())
 
+    # --- Queue Operations ---
+
+    def list_queues(self) -> list[Queue]:
+        return self._get_loop().run_until_complete(self._client.list_queues())
+
+    def queue_stats(self, queue_name: str) -> QueueStats:
+        return self._get_loop().run_until_complete(self._client.queue_stats(queue_name))
+
+    def pause_queue(self, queue_name: str) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(self._client.pause_queue(queue_name))
+
+    def resume_queue(self, queue_name: str) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(self._client.resume_queue(queue_name))
+
+    # --- Workflow Operations ---
+
+    def workflow(self, definition: WorkflowDefinition) -> Workflow:
+        return self._get_loop().run_until_complete(self._client.workflow(definition))
+
+    def get_workflow(self, workflow_id: str) -> Workflow:
+        return self._get_loop().run_until_complete(self._client.get_workflow(workflow_id))
+
+    def cancel_workflow(self, workflow_id: str) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(
+            self._client.cancel_workflow(workflow_id)
+        )
+
+    # --- Lifecycle ---
+
     def close(self) -> None:
         if self._loop and not self._loop.is_closed():
             self._loop.run_until_complete(self._client.close())

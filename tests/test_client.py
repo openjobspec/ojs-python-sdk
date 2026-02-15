@@ -114,3 +114,53 @@ class TestContextManager:
     async def test_health(self, client: ojs.Client) -> None:
         result = await client.health()
         assert result["status"] == "ok"
+
+
+class TestSyncClient:
+    def test_sync_enqueue(self, transport: FakeTransport) -> None:
+        client = ojs.SyncClient.__new__(ojs.SyncClient)
+        client._client = ojs.Client("http://localhost:8080", transport=transport)
+        client._loop = None
+        try:
+            job = client.enqueue("test.echo", ["hello"])
+            assert job.type == "test.echo"
+        finally:
+            client.close()
+
+    def test_sync_get_job(self, transport: FakeTransport) -> None:
+        client = ojs.SyncClient.__new__(ojs.SyncClient)
+        client._client = ojs.Client("http://localhost:8080", transport=transport)
+        client._loop = None
+        try:
+            job = client.get_job("019539a4-b68c-7def-8000-1a2b3c4d5e6f")
+            assert job.state.value == "completed"
+        finally:
+            client.close()
+
+    def test_sync_list_queues(self, transport: FakeTransport) -> None:
+        client = ojs.SyncClient.__new__(ojs.SyncClient)
+        client._client = ojs.Client("http://localhost:8080", transport=transport)
+        client._loop = None
+        try:
+            queues = client.list_queues()
+            assert len(queues) == 1
+            assert queues[0].name == "default"
+        finally:
+            client.close()
+
+    def test_sync_queue_stats(self, transport: FakeTransport) -> None:
+        client = ojs.SyncClient.__new__(ojs.SyncClient)
+        client._client = ojs.Client("http://localhost:8080", transport=transport)
+        client._loop = None
+        try:
+            stats = client.queue_stats("default")
+            assert stats.queue == "default"
+        finally:
+            client.close()
+
+    def test_sync_context_manager(self, transport: FakeTransport) -> None:
+        with ojs.SyncClient.__new__(ojs.SyncClient) as client:
+            client._client = ojs.Client("http://localhost:8080", transport=transport)
+            client._loop = None
+            job = client.enqueue("test.echo", ["hello"])
+            assert job.type == "test.echo"
