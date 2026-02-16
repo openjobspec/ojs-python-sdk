@@ -19,7 +19,7 @@ from typing import Any
 from ojs.job import JobContext
 
 
-class TimeoutError(Exception):
+class TimeoutError(Exception):  # noqa: A001
     """Raised when a job exceeds its execution timeout.
 
     Attributes:
@@ -56,7 +56,7 @@ def timeout_middleware(
         try:
             async with asyncio.timeout(seconds):
                 return await next_handler()
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError:  # noqa: UP041
             raise TimeoutError(seconds, ctx.job.id) from None
 
     return middleware

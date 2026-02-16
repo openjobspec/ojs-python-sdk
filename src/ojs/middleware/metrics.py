@@ -10,7 +10,9 @@ Usage::
     class MyRecorder:
         def job_started(self, job_type: str, queue: str) -> None: ...
         def job_completed(self, job_type: str, queue: str, duration_s: float) -> None: ...
-        def job_failed(self, job_type: str, queue: str, duration_s: float, error: Exception) -> None: ...
+        def job_failed(
+            self, job_type: str, queue: str, duration_s: float, error: Exception
+        ) -> None: ...
 
     worker.add_middleware(metrics_middleware(MyRecorder()))
 """
@@ -40,9 +42,7 @@ class MetricsRecorder(Protocol):
         """Called when a job completes successfully."""
         ...
 
-    def job_failed(
-        self, job_type: str, queue: str, duration_s: float, error: Exception
-    ) -> None:
+    def job_failed(self, job_type: str, queue: str, duration_s: float, error: Exception) -> None:
         """Called when a job fails."""
         ...
 
