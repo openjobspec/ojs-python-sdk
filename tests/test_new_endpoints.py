@@ -62,7 +62,7 @@ class TestCron:
         result = await client.register_cron_job(
             name="daily-cleanup",
             cron="0 0 * * *",
-            type="system.cleanup",
+            job_type="system.cleanup",
             args=["stale"],
             queue="maintenance",
         )
@@ -74,7 +74,7 @@ class TestCron:
         result = await client.register_cron_job(
             name="heartbeat",
             cron="*/5 * * * *",
-            type="system.heartbeat",
+            job_type="system.heartbeat",
         )
         assert result["name"] == "heartbeat"
 
@@ -97,7 +97,7 @@ class TestSchemas:
     async def test_register_schema(self, client: ojs.Client) -> None:
         result = await client.register_schema(
             uri="ojs://schemas/email.send/v1",
-            type="email.send",
+            job_type="email.send",
             version="1.0",
             schema={"type": "array", "items": {"type": "string"}},
         )

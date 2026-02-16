@@ -295,9 +295,7 @@ class Client:
         Returns:
             Dict with 'jobs' list and 'pagination' metadata.
         """
-        return await self._transport.list_dead_letter_jobs(
-            queue=queue, limit=limit, offset=offset
-        )
+        return await self._transport.list_dead_letter_jobs(queue=queue, limit=limit, offset=offset)
 
     async def retry_dead_letter_job(self, job_id: str) -> Job:
         """Retry a dead-letter job, re-enqueuing it.
@@ -343,7 +341,7 @@ class Client:
         self,
         name: str,
         cron: str,
-        type: str,
+        job_type: str,
         args: list[Any] | None = None,
         *,
         timezone: str | None = None,
@@ -358,7 +356,7 @@ class Client:
         Args:
             name: Unique cron job name.
             cron: Cron expression (e.g., "*/5 * * * *").
-            type: Job type to enqueue on each tick.
+            job_type: Job type to enqueue on each tick.
             args: Arguments for the job. Default: [].
             timezone: IANA timezone (e.g., "America/New_York").
             queue: Target queue name.
@@ -373,7 +371,7 @@ class Client:
         body: dict[str, Any] = {
             "name": name,
             "cron": cron,
-            "type": type,
+            "type": job_type,
             "args": args or [],
         }
         if timezone is not None:
@@ -427,7 +425,7 @@ class Client:
     async def register_schema(
         self,
         uri: str,
-        type: str,
+        job_type: str,
         version: str,
         schema: dict[str, Any],
     ) -> dict[str, Any]:
@@ -435,7 +433,7 @@ class Client:
 
         Args:
             uri: Schema URI identifier.
-            type: Job type this schema validates.
+            job_type: Job type this schema validates.
             version: Schema version string.
             schema: The JSON schema definition.
 
@@ -444,7 +442,7 @@ class Client:
         """
         body: dict[str, Any] = {
             "uri": uri,
-            "type": type,
+            "type": job_type,
             "version": version,
             "schema": schema,
         }
@@ -581,10 +579,10 @@ class SyncClient:
         )
 
     def register_cron_job(
-        self, name: str, cron: str, type: str, args: list[Any] | None = None, **kwargs: Any
+        self, name: str, cron: str, job_type: str, args: list[Any] | None = None, **kwargs: Any
     ) -> dict[str, Any]:
         return self._get_loop().run_until_complete(
-            self._client.register_cron_job(name, cron, type, args, **kwargs)
+            self._client.register_cron_job(name, cron, job_type, args, **kwargs)
         )
 
     def unregister_cron_job(self, name: str) -> dict[str, Any]:
@@ -598,10 +596,10 @@ class SyncClient:
         )
 
     def register_schema(
-        self, uri: str, type: str, version: str, schema: dict[str, Any]
+        self, uri: str, job_type: str, version: str, schema: dict[str, Any]
     ) -> dict[str, Any]:
         return self._get_loop().run_until_complete(
-            self._client.register_schema(uri, type, version, schema)
+            self._client.register_schema(uri, job_type, version, schema)
         )
 
     def get_schema(self, uri: str) -> dict[str, Any]:
