@@ -144,5 +144,52 @@ class FakeTransport(Transport):
     async def health(self) -> dict[str, Any]:
         return {"status": "ok"}
 
+    async def manifest(self) -> dict[str, Any]:
+        return {
+            "ojs_version": "1.0",
+            "conformance_level": 3,
+            "capabilities": {"dead_letter": True, "cron": True, "schemas": True},
+        }
+
+    async def list_dead_letter_jobs(
+        self,
+        queue: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return {"jobs": [], "pagination": {"total": 0, "limit": limit, "offset": offset}}
+
+    async def retry_dead_letter_job(self, job_id: str) -> Job:
+        return Job.from_dict({**self.push_response, "id": job_id, "state": "available"})
+
+    async def delete_dead_letter_job(self, job_id: str) -> dict[str, Any]:
+        return {}
+
+    async def list_cron_jobs(self, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        return {"cron_jobs": [], "pagination": {"total": 0, "limit": limit, "offset": offset}}
+
+    async def register_cron_job(self, body: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "name": body["name"],
+            "cron": body["cron"],
+            "type": body["type"],
+            "status": "active",
+        }
+
+    async def unregister_cron_job(self, name: str) -> dict[str, Any]:
+        return {}
+
+    async def list_schemas(self, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        return {"schemas": [], "pagination": {"total": 0, "limit": limit, "offset": offset}}
+
+    async def register_schema(self, body: dict[str, Any]) -> dict[str, Any]:
+        return {"uri": body["uri"], "type": body["type"], "version": body["version"]}
+
+    async def get_schema(self, uri: str) -> dict[str, Any]:
+        return {"uri": uri, "type": "email.send", "version": "1.0", "schema": {}}
+
+    async def delete_schema(self, uri: str) -> dict[str, Any]:
+        return {}
+
     async def close(self) -> None:
         pass
