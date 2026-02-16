@@ -32,6 +32,7 @@ from ojs.errors import (
     OJSTimeoutError,
     OJSValidationError,
     QueuePausedError,
+    RateLimitInfo,
     RateLimitedError,
 )
 from ojs.events import Event, EventType

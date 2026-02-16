@@ -3,7 +3,7 @@
 import pytest
 
 import ojs
-from ojs.errors import OJSErrorDetail, raise_for_error
+from ojs.errors import OJSErrorDetail, RateLimitInfo, raise_for_error
 
 
 class TestOJSErrorDetail:
@@ -79,6 +79,21 @@ class TestRateLimitedError:
         err = ojs.RateLimitedError(429, detail)
         assert err.retry_after is None
 
+    def test_rate_limit_info(self) -> None:
+        detail = OJSErrorDetail(code="rate_limited", message="slow down", retryable=True)
+        rl = RateLimitInfo(limit=100, remaining=0, reset=1700000000, retry_after=30.0)
+        err = ojs.RateLimitedError(429, detail, retry_after=30.0, rate_limit=rl)
+        assert err.rate_limit is not None
+        assert err.rate_limit.limit == 100
+        assert err.rate_limit.remaining == 0
+        assert err.rate_limit.reset == 1700000000
+        assert err.rate_limit.retry_after == 30.0
+
+    def test_rate_limit_defaults_to_none(self) -> None:
+        detail = OJSErrorDetail(code="rate_limited", message="slow down", retryable=True)
+        err = ojs.RateLimitedError(429, detail)
+        assert err.rate_limit is None
+
 
 class TestRaiseForError:
     def test_duplicate_error(self) -> None:
@@ -106,6 +121,23 @@ class TestRaiseForError:
             raise_for_error(429, body, headers)
         assert exc_info.value.retry_after == 60.0
         assert exc_info.value.retryable is True
+
+    def test_rate_limited_error_with_full_headers(self) -> None:
+        body = {"error": {"code": "rate_limited", "message": "slow", "retryable": True}}
+        headers = {
+            "retry-after": "30",
+            "x-ratelimit-limit": "1000",
+            "x-ratelimit-remaining": "0",
+            "x-ratelimit-reset": "1700000000",
+        }
+        with pytest.raises(ojs.RateLimitedError) as exc_info:
+            raise_for_error(429, body, headers)
+        assert exc_info.value.retry_after == 30.0
+        assert exc_info.value.rate_limit is not None
+        assert exc_info.value.rate_limit.limit == 1000
+        assert exc_info.value.rate_limit.remaining == 0
+        assert exc_info.value.rate_limit.reset == 1700000000
+        assert exc_info.value.rate_limit.retry_after == 30.0
 
     def test_rate_limited_error_without_retry_after(self) -> None:
         body = {"error": {"code": "rate_limited", "message": "slow", "retryable": True}}
