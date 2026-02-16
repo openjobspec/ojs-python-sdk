@@ -267,6 +267,211 @@ class Client:
         """Cancel a workflow."""
         return await self._transport.cancel_workflow(workflow_id)
 
+    # --- Manifest ---
+
+    async def manifest(self) -> dict[str, Any]:
+        """Get server manifest (capabilities, extensions, endpoints).
+
+        Returns:
+            Server manifest dict with ojs_version, capabilities, etc.
+        """
+        return await self._transport.manifest()
+
+    # --- Dead Letter Operations ---
+
+    async def list_dead_letter_jobs(
+        self,
+        queue: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List dead-letter jobs.
+
+        Args:
+            queue: Optional queue name to filter by.
+            limit: Maximum number of jobs to return. Default: 50.
+            offset: Pagination offset. Default: 0.
+
+        Returns:
+            Dict with 'jobs' list and 'pagination' metadata.
+        """
+        return await self._transport.list_dead_letter_jobs(
+            queue=queue, limit=limit, offset=offset
+        )
+
+    async def retry_dead_letter_job(self, job_id: str) -> Job:
+        """Retry a dead-letter job, re-enqueuing it.
+
+        Args:
+            job_id: The job identifier.
+
+        Returns:
+            The re-enqueued Job.
+        """
+        return await self._transport.retry_dead_letter_job(job_id)
+
+    async def delete_dead_letter_job(self, job_id: str) -> dict[str, Any]:
+        """Delete a dead-letter job permanently.
+
+        Args:
+            job_id: The job identifier.
+
+        Returns:
+            Empty dict on success.
+        """
+        return await self._transport.delete_dead_letter_job(job_id)
+
+    # --- Cron Operations ---
+
+    async def list_cron_jobs(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List registered cron jobs.
+
+        Args:
+            limit: Maximum number of results. Default: 50.
+            offset: Pagination offset. Default: 0.
+
+        Returns:
+            Dict with 'cron_jobs' list and 'pagination' metadata.
+        """
+        return await self._transport.list_cron_jobs(limit=limit, offset=offset)
+
+    async def register_cron_job(
+        self,
+        name: str,
+        cron: str,
+        type: str,
+        args: list[Any] | None = None,
+        *,
+        timezone: str | None = None,
+        queue: str | None = None,
+        meta: dict[str, Any] | None = None,
+        priority: int | None = None,
+        retry: RetryPolicy | None = None,
+        tags: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Register a new cron job.
+
+        Args:
+            name: Unique cron job name.
+            cron: Cron expression (e.g., "*/5 * * * *").
+            type: Job type to enqueue on each tick.
+            args: Arguments for the job. Default: [].
+            timezone: IANA timezone (e.g., "America/New_York").
+            queue: Target queue name.
+            meta: Extensible key-value metadata.
+            priority: Job priority.
+            retry: Retry policy.
+            tags: Tags for filtering and observability.
+
+        Returns:
+            The created cron job info.
+        """
+        body: dict[str, Any] = {
+            "name": name,
+            "cron": cron,
+            "type": type,
+            "args": args or [],
+        }
+        if timezone is not None:
+            body["timezone"] = timezone
+        if meta is not None:
+            body["meta"] = meta
+
+        options: dict[str, Any] = {}
+        if queue is not None:
+            options["queue"] = queue
+        if priority is not None:
+            options["priority"] = priority
+        if retry is not None:
+            options["retry"] = retry.to_dict()
+        if tags is not None:
+            options["tags"] = tags
+        if options:
+            body["options"] = options
+
+        return await self._transport.register_cron_job(body)
+
+    async def unregister_cron_job(self, name: str) -> dict[str, Any]:
+        """Unregister a cron job by name.
+
+        Args:
+            name: The cron job name.
+
+        Returns:
+            Empty dict on success.
+        """
+        return await self._transport.unregister_cron_job(name)
+
+    # --- Schema Operations ---
+
+    async def list_schemas(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List registered schemas.
+
+        Args:
+            limit: Maximum number of results. Default: 50.
+            offset: Pagination offset. Default: 0.
+
+        Returns:
+            Dict with 'schemas' list and 'pagination' metadata.
+        """
+        return await self._transport.list_schemas(limit=limit, offset=offset)
+
+    async def register_schema(
+        self,
+        uri: str,
+        type: str,
+        version: str,
+        schema: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Register a new schema.
+
+        Args:
+            uri: Schema URI identifier.
+            type: Job type this schema validates.
+            version: Schema version string.
+            schema: The JSON schema definition.
+
+        Returns:
+            The created schema info.
+        """
+        body: dict[str, Any] = {
+            "uri": uri,
+            "type": type,
+            "version": version,
+            "schema": schema,
+        }
+        return await self._transport.register_schema(body)
+
+    async def get_schema(self, uri: str) -> dict[str, Any]:
+        """Get a schema by URI.
+
+        Args:
+            uri: The schema URI.
+
+        Returns:
+            The schema info.
+        """
+        return await self._transport.get_schema(uri)
+
+    async def delete_schema(self, uri: str) -> dict[str, Any]:
+        """Delete a schema by URI.
+
+        Args:
+            uri: The schema URI.
+
+        Returns:
+            Empty dict on success.
+        """
+        return await self._transport.delete_schema(uri)
+
     # --- System ---
 
     async def health(self) -> dict[str, Any]:
@@ -344,6 +549,66 @@ class SyncClient:
 
     def cancel_workflow(self, workflow_id: str) -> dict[str, Any]:
         return self._get_loop().run_until_complete(self._client.cancel_workflow(workflow_id))
+
+    # --- Manifest ---
+
+    def manifest(self) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(self._client.manifest())
+
+    # --- Dead Letter Operations ---
+
+    def list_dead_letter_jobs(
+        self,
+        queue: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(
+            self._client.list_dead_letter_jobs(queue=queue, limit=limit, offset=offset)
+        )
+
+    def retry_dead_letter_job(self, job_id: str) -> Job:
+        return self._get_loop().run_until_complete(self._client.retry_dead_letter_job(job_id))
+
+    def delete_dead_letter_job(self, job_id: str) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(self._client.delete_dead_letter_job(job_id))
+
+    # --- Cron Operations ---
+
+    def list_cron_jobs(self, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(
+            self._client.list_cron_jobs(limit=limit, offset=offset)
+        )
+
+    def register_cron_job(
+        self, name: str, cron: str, type: str, args: list[Any] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(
+            self._client.register_cron_job(name, cron, type, args, **kwargs)
+        )
+
+    def unregister_cron_job(self, name: str) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(self._client.unregister_cron_job(name))
+
+    # --- Schema Operations ---
+
+    def list_schemas(self, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(
+            self._client.list_schemas(limit=limit, offset=offset)
+        )
+
+    def register_schema(
+        self, uri: str, type: str, version: str, schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(
+            self._client.register_schema(uri, type, version, schema)
+        )
+
+    def get_schema(self, uri: str) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(self._client.get_schema(uri))
+
+    def delete_schema(self, uri: str) -> dict[str, Any]:
+        return self._get_loop().run_until_complete(self._client.delete_schema(uri))
 
     # --- Lifecycle ---
 
