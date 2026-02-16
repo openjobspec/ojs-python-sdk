@@ -6,6 +6,7 @@ Implements the OJS HTTP/REST Protocol Binding (Layer 3).
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -70,6 +71,39 @@ class HTTPTransport(Transport):
             response = await self._client.request(
                 method,
                 self._url(path),
+                json=json,
+                params=params,
+            )
+        except httpx.ConnectError as e:
+            raise OJSConnectionError(
+                f"Failed to connect to OJS server at {self._base_url}: {e}"
+            ) from e
+        except httpx.TimeoutException as e:
+            raise OJSTimeoutError(f"Request to OJS server timed out: {e}") from e
+
+        if response.status_code >= 400:
+            body = response.json()
+            headers = dict(response.headers)
+            raise_for_error(response.status_code, body, headers)
+
+        if response.status_code == 204:
+            return {}
+        result: dict[str, Any] = response.json()
+        return result
+
+    async def _raw_request(
+        self,
+        method: str,
+        raw_path: str,
+        *,
+        json: Any = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Make an HTTP request with a raw path (no base-path prefix)."""
+        try:
+            response = await self._client.request(
+                method,
+                raw_path,
                 json=json,
                 params=params,
             )
@@ -177,6 +211,68 @@ class HTTPTransport(Transport):
 
     async def cancel_workflow(self, workflow_id: str) -> dict[str, Any]:
         return await self._request("DELETE", f"/workflows/{workflow_id}")
+
+    # --- Manifest ---
+
+    async def manifest(self) -> dict[str, Any]:
+        return await self._raw_request("GET", "/ojs/manifest")
+
+    # --- Dead Letter Operations ---
+
+    async def list_dead_letter_jobs(
+        self,
+        queue: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if queue is not None:
+            params["queue"] = queue
+        return await self._request("GET", "/dead-letter", params=params)
+
+    async def retry_dead_letter_job(self, job_id: str) -> Job:
+        data = await self._request("POST", f"/dead-letter/{job_id}/retry")
+        return Job.from_dict(data["job"])
+
+    async def delete_dead_letter_job(self, job_id: str) -> dict[str, Any]:
+        return await self._request("DELETE", f"/dead-letter/{job_id}")
+
+    # --- Cron Operations ---
+
+    async def list_cron_jobs(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        return await self._request("GET", "/cron", params=params)
+
+    async def register_cron_job(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/cron", json=body)
+
+    async def unregister_cron_job(self, name: str) -> dict[str, Any]:
+        return await self._request("DELETE", f"/cron/{name}")
+
+    # --- Schema Operations ---
+
+    async def list_schemas(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        return await self._request("GET", "/schemas", params=params)
+
+    async def register_schema(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/schemas", json=body)
+
+    async def get_schema(self, uri: str) -> dict[str, Any]:
+        encoded_uri = quote(uri, safe="")
+        return await self._request("GET", f"/schemas/{encoded_uri}")
+
+    async def delete_schema(self, uri: str) -> dict[str, Any]:
+        encoded_uri = quote(uri, safe="")
+        return await self._request("DELETE", f"/schemas/{encoded_uri}")
 
     # --- Lifecycle ---
 

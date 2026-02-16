@@ -161,6 +161,145 @@ class Transport(abc.ABC):
     async def cancel_workflow(self, workflow_id: str) -> dict[str, Any]:
         """Cancel a workflow."""
 
+    # --- Manifest ---
+
+    @abc.abstractmethod
+    async def manifest(self) -> dict[str, Any]:
+        """Get server manifest (capabilities, extensions, endpoints)."""
+
+    # --- Dead Letter Operations ---
+
+    @abc.abstractmethod
+    async def list_dead_letter_jobs(
+        self,
+        queue: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List dead-letter jobs.
+
+        Args:
+            queue: Optional queue filter.
+            limit: Maximum number of jobs to return.
+            offset: Pagination offset.
+
+        Returns:
+            Dict with 'jobs' list and 'pagination' metadata.
+        """
+
+    @abc.abstractmethod
+    async def retry_dead_letter_job(self, job_id: str) -> Job:
+        """Retry a dead-letter job.
+
+        Args:
+            job_id: The job identifier.
+
+        Returns:
+            The re-enqueued Job.
+        """
+
+    @abc.abstractmethod
+    async def delete_dead_letter_job(self, job_id: str) -> dict[str, Any]:
+        """Delete a dead-letter job permanently.
+
+        Args:
+            job_id: The job identifier.
+
+        Returns:
+            Empty dict on success (204).
+        """
+
+    # --- Cron Operations ---
+
+    @abc.abstractmethod
+    async def list_cron_jobs(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List registered cron jobs.
+
+        Args:
+            limit: Maximum number of results.
+            offset: Pagination offset.
+
+        Returns:
+            Dict with 'cron_jobs' list and 'pagination' metadata.
+        """
+
+    @abc.abstractmethod
+    async def register_cron_job(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Register a new cron job.
+
+        Args:
+            body: Cron job definition (name, cron, type, args, etc.).
+
+        Returns:
+            The created cron job info.
+        """
+
+    @abc.abstractmethod
+    async def unregister_cron_job(self, name: str) -> dict[str, Any]:
+        """Unregister a cron job by name.
+
+        Args:
+            name: The cron job name.
+
+        Returns:
+            Empty dict on success (204).
+        """
+
+    # --- Schema Operations ---
+
+    @abc.abstractmethod
+    async def list_schemas(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List registered schemas.
+
+        Args:
+            limit: Maximum number of results.
+            offset: Pagination offset.
+
+        Returns:
+            Dict with 'schemas' list and 'pagination' metadata.
+        """
+
+    @abc.abstractmethod
+    async def register_schema(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Register a new schema.
+
+        Args:
+            body: Schema definition (uri, type, version, schema).
+
+        Returns:
+            The created schema info.
+        """
+
+    @abc.abstractmethod
+    async def get_schema(self, uri: str) -> dict[str, Any]:
+        """Get a schema by URI.
+
+        Args:
+            uri: The schema URI (will be URL-encoded).
+
+        Returns:
+            The schema info.
+        """
+
+    @abc.abstractmethod
+    async def delete_schema(self, uri: str) -> dict[str, Any]:
+        """Delete a schema by URI.
+
+        Args:
+            uri: The schema URI (will be URL-encoded).
+
+        Returns:
+            Empty dict on success (204).
+        """
+
     # --- Lifecycle ---
 
     @abc.abstractmethod
