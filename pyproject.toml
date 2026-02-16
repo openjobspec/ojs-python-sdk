@@ -75,7 +75,23 @@ target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+select = [
+  "E",     # pycodestyle errors
+  "F",     # pyflakes
+  "I",     # isort
+  "N",     # pep8-naming
+  "UP",    # pyupgrade
+  "B",     # flake8-bugbear
+  "SIM",   # flake8-simplify
+  "A",     # flake8-builtins
+  "C4",    # flake8-comprehensions
+  "DTZ",   # flake8-datetimez
+  "T20",   # flake8-print
+  "PT",    # flake8-pytest-style
+  "RUF",   # Ruff-specific rules
+  "ASYNC", # flake8-async
+  "S",     # flake8-bandit (security)
+]
 
 [tool.mypy]
 python_version = "3.11"
