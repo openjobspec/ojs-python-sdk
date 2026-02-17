@@ -6,10 +6,7 @@ Run with: pytest tests/test_benchmark.py -v
 import json
 import time
 
-import pytest
-
 from ojs.job import Job, JobRequest, JobState
-
 
 MINIMAL_JOB_DICT = {
     "id": "019539a4-b68c-7def-8000-1a2b3c4d5e6f",
@@ -144,7 +141,8 @@ class TestJobStateOperations:
         start = time.perf_counter()
         for _ in range(iterations):
             for s in states:
-                s.is_terminal()
+                _ = s.is_terminal
         elapsed = time.perf_counter() - start
         per_op = elapsed / (iterations * len(states)) * 1_000_000
-        print(f"\n  JobState.is_terminal: {per_op:.2f} µs/op ({iterations * len(states)} iterations)")
+        total = iterations * len(states)
+        print(f"\n  JobState.is_terminal: {per_op:.2f} µs/op ({total} iterations)")

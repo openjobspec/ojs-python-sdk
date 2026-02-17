@@ -112,9 +112,7 @@ class TestDeadLetterTransport:
 
 
 class TestCronTransport:
-    async def test_list_cron_jobs(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_list_cron_jobs(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/cron?limit=50&offset=0",
             method="GET",
@@ -134,9 +132,7 @@ class TestCronTransport:
         assert len(result["cron_jobs"]) == 1
         assert result["cron_jobs"][0]["name"] == "daily-cleanup"
 
-    async def test_register_cron_job(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_register_cron_job(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/cron",
             method="POST",
@@ -175,9 +171,7 @@ class TestCronTransport:
 
 
 class TestSchemaTransport:
-    async def test_list_schemas(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_list_schemas(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/schemas?limit=50&offset=0",
             method="GET",
@@ -191,9 +185,7 @@ class TestSchemaTransport:
         result = await transport.list_schemas()
         assert len(result["schemas"]) == 1
 
-    async def test_register_schema(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_register_schema(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/schemas",
             method="POST",
@@ -219,9 +211,7 @@ class TestSchemaTransport:
         assert sent["uri"] == "ojs://email.send/v1"
         assert sent["schema"] == {"type": "array"}
 
-    async def test_get_schema(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_get_schema(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         # URI is URL-encoded: ojs://email.send/v1 → ojs%3A%2F%2Femail.send%2Fv1
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/schemas/ojs%3A%2F%2Femail.send%2Fv1",
@@ -236,9 +226,7 @@ class TestSchemaTransport:
         result = await transport.get_schema("ojs://email.send/v1")
         assert result["uri"] == "ojs://email.send/v1"
 
-    async def test_delete_schema(
-        self, httpx_mock: HTTPXMock, transport: HTTPTransport
-    ) -> None:
+    async def test_delete_schema(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/schemas/ojs%3A%2F%2Femail.send%2Fv1",
             method="DELETE",
