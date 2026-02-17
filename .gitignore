@@ -24,6 +24,7 @@ htmlcov/
 .coverage
 coverage.xml
 .benchmarks/
+.hypothesis/
 
 # mypy
 .mypy_cache/
