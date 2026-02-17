@@ -1,4 +1,4 @@
-.PHONY: install test lint format typecheck check clean coverage
+.PHONY: install test lint format typecheck check clean coverage docs benchmark
 
 install:
 	pip install -e ".[dev]"
@@ -22,6 +22,12 @@ typecheck:
 
 check: lint typecheck test
 
+benchmark:
+	pytest tests/test_benchmarks.py --benchmark-only
+
+docs:
+	sphinx-build -b html docs docs/_build/html
+
 clean:
-	rm -rf dist/ build/ *.egg-info src/*.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage coverage.xml
+	rm -rf dist/ build/ *.egg-info src/*.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage coverage.xml docs/_build
 	find . -type d -name __pycache__ -exec rm -rf {} +
