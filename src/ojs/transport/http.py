@@ -183,6 +183,11 @@ class HTTPTransport(Transport):
             body["visibility_timeout_ms"] = visibility_timeout_ms
         return await self._request("POST", "/workers/heartbeat", json=body)
 
+    # --- Progress ---
+
+    async def progress(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/workers/progress", json=body)
+
     # --- Queue Operations ---
 
     async def list_queues(self) -> list[Queue]:

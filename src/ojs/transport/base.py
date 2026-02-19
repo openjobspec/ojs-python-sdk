@@ -300,6 +300,19 @@ class Transport(abc.ABC):
             Empty dict on success (204).
         """
 
+    # --- Progress ---
+
+    @abc.abstractmethod
+    async def progress(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Report job progress to the server.
+
+        Args:
+            body: Progress report body (job_id, percentage, message, data).
+
+        Returns:
+            Server acknowledgement (may be empty).
+        """
+
     # --- Lifecycle ---
 
     @abc.abstractmethod
