@@ -99,4 +99,5 @@ __all__ = [
     "RateLimitedError",
     # Progress
     "report_progress",
+    # ML/AI Resource Extension (available via ojs.ml)
 ]
