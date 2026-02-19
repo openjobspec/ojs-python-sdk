@@ -8,6 +8,7 @@ from pytest_httpx import HTTPXMock
 
 import ojs
 from ojs.transport.http import _OJS_BASE_PATH, _OJS_CONTENT_TYPE, HTTPTransport
+from ojs.transport.rate_limiter import RetryConfig
 from ojs.workflow import WorkflowDefinition, WorkflowStep
 
 BASE_URL = "http://localhost:8080"
@@ -26,7 +27,7 @@ JOB_RESPONSE = {
 
 @pytest.fixture
 def transport() -> HTTPTransport:
-    return HTTPTransport(BASE_URL)
+    return HTTPTransport(BASE_URL, retry_config=RetryConfig(enabled=False))
 
 
 class TestHTTPTransportInit:

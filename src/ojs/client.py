@@ -16,6 +16,7 @@ from ojs.queue import Queue, QueueStats
 from ojs.retry import RetryPolicy
 from ojs.transport.base import Transport
 from ojs.transport.http import HTTPTransport
+from ojs.transport.rate_limiter import RetryConfig
 from ojs.workflow import Workflow, WorkflowDefinition
 
 
@@ -59,8 +60,11 @@ class Client:
         timeout: float = 30.0,
         headers: dict[str, str] | None = None,
         transport: Transport | None = None,
+        retry_config: RetryConfig | None = None,
     ) -> None:
-        self._transport = transport or HTTPTransport(url, timeout=timeout, headers=headers)
+        self._transport = transport or HTTPTransport(
+            url, timeout=timeout, headers=headers, retry_config=retry_config,
+        )
         self._enqueue_middleware = EnqueueMiddlewareChain()
 
     async def __aenter__(self) -> Client:
@@ -499,8 +503,9 @@ class SyncClient:
         *,
         timeout: float = 30.0,
         headers: dict[str, str] | None = None,
+        retry_config: RetryConfig | None = None,
     ) -> None:
-        self._client = Client(url, timeout=timeout, headers=headers)
+        self._client = Client(url, timeout=timeout, headers=headers, retry_config=retry_config)
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def _get_loop(self) -> asyncio.AbstractEventLoop:

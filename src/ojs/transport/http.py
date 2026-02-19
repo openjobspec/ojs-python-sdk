@@ -5,6 +5,7 @@ Implements the OJS HTTP/REST Protocol Binding (Layer 3).
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 from urllib.parse import quote
 
@@ -14,6 +15,7 @@ from ojs.errors import OJSConnectionError, OJSTimeoutError, raise_for_error
 from ojs.job import Job
 from ojs.queue import Queue, QueueStats
 from ojs.transport.base import Transport
+from ojs.transport.rate_limiter import RetryConfig, sleep_before_retry
 from ojs.workflow import Workflow, WorkflowDefinition
 
 _OJS_CONTENT_TYPE = "application/openjobspec+json"
@@ -30,6 +32,7 @@ class HTTPTransport(Transport):
         timeout: Request timeout in seconds. Default: 30.
         headers: Additional HTTP headers to include in all requests.
         client: Optional pre-configured httpx.AsyncClient to use.
+        retry_config: Configuration for automatic 429 rate-limit retries.
     """
 
     def __init__(
@@ -39,9 +42,11 @@ class HTTPTransport(Transport):
         timeout: float = 30.0,
         headers: dict[str, str] | None = None,
         client: httpx.AsyncClient | None = None,
+        retry_config: RetryConfig | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._owns_client = client is None
+        self._retry_config = retry_config or RetryConfig()
         default_headers = {
             "Content-Type": _OJS_CONTENT_TYPE,
             "Accept": _OJS_CONTENT_TYPE,
@@ -66,30 +71,11 @@ class HTTPTransport(Transport):
         json: Any = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Make an HTTP request and handle errors."""
-        try:
-            response = await self._client.request(
-                method,
-                self._url(path),
-                json=json,
-                params=params,
-            )
-        except httpx.ConnectError as e:
-            raise OJSConnectionError(
-                f"Failed to connect to OJS server at {self._base_url}: {e}"
-            ) from e
-        except httpx.TimeoutException as e:
-            raise OJSTimeoutError(f"Request to OJS server timed out: {e}") from e
+        """Make an HTTP request and handle errors.
 
-        if response.status_code >= 400:
-            body = response.json()
-            headers = dict(response.headers)
-            raise_for_error(response.status_code, body, headers)
-
-        if response.status_code == 204:
-            return {}
-        result: dict[str, Any] = response.json()
-        return result
+        Automatically retries on 429 responses when rate-limit retry is enabled.
+        """
+        return await self._do_request(method, self._url(path), json=json, params=params)
 
     async def _raw_request(
         self,
@@ -100,29 +86,56 @@ class HTTPTransport(Transport):
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Make an HTTP request with a raw path (no base-path prefix)."""
-        try:
-            response = await self._client.request(
-                method,
-                raw_path,
-                json=json,
-                params=params,
-            )
-        except httpx.ConnectError as e:
-            raise OJSConnectionError(
-                f"Failed to connect to OJS server at {self._base_url}: {e}"
-            ) from e
-        except httpx.TimeoutException as e:
-            raise OJSTimeoutError(f"Request to OJS server timed out: {e}") from e
+        return await self._do_request(method, raw_path, json=json, params=params)
 
-        if response.status_code >= 400:
-            body = response.json()
-            headers = dict(response.headers)
-            raise_for_error(response.status_code, body, headers)
+    async def _do_request(
+        self,
+        method: str,
+        url: str,
+        *,
+        json: Any = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Execute an HTTP request with optional 429 retry logic."""
+        cfg = self._retry_config
+        max_attempts = (1 + cfg.max_retries) if cfg.enabled else 1
 
-        if response.status_code == 204:
-            return {}
-        result: dict[str, Any] = response.json()
-        return result
+        for attempt in range(max_attempts):
+            try:
+                response = await self._client.request(
+                    method, url, json=json, params=params,
+                )
+            except httpx.ConnectError as e:
+                raise OJSConnectionError(
+                    f"Failed to connect to OJS server at {self._base_url}: {e}"
+                ) from e
+            except httpx.TimeoutException as e:
+                raise OJSTimeoutError(f"Request to OJS server timed out: {e}") from e
+
+            if response.status_code == 429 and cfg.enabled and attempt < cfg.max_retries:
+                retry_after: float | None = None
+                raw = response.headers.get("retry-after")
+                if raw is not None:
+                    with contextlib.suppress(ValueError):
+                        retry_after = float(raw)
+                await sleep_before_retry(attempt, retry_after, cfg)
+                continue
+
+            if response.status_code >= 400:
+                body = response.json()
+                headers = dict(response.headers)
+                raise_for_error(response.status_code, body, headers)
+
+            if response.status_code == 204:
+                return {}
+            result: dict[str, Any] = response.json()
+            return result
+
+        # Unreachable in practice — the last iteration raises via raise_for_error
+        body = response.json()  # type: ignore[possibly-undefined]
+        headers = dict(response.headers)  # type: ignore[possibly-undefined]
+        raise_for_error(response.status_code, body, headers)  # type: ignore[possibly-undefined]
+        return {}  # pragma: no cover
 
     # --- Job Operations ---
 
