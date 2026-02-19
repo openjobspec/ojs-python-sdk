@@ -41,6 +41,7 @@ from ojs.middleware import (
     EnqueueMiddleware,
     ExecutionMiddleware,
 )
+from ojs.progress import report_progress
 from ojs.queue import Queue, QueueStats
 from ojs.retry import RetryPolicy
 from ojs.worker import Worker, WorkerState
@@ -96,4 +97,6 @@ __all__ = [
     "JobNotFoundError",
     "QueuePausedError",
     "RateLimitedError",
+    # Progress
+    "report_progress",
 ]
