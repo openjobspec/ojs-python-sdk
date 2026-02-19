@@ -23,6 +23,8 @@ Usage::
 """
 
 from ojs.client import Client, SyncClient
+from ojs.error_codes import ErrorCodeEntry
+from ojs.error_codes import lookup_by_canonical_code, lookup_by_code
 from ojs.errors import (
     DuplicateJobError,
     JobNotFoundError,
@@ -44,6 +46,7 @@ from ojs.middleware import (
 from ojs.progress import report_progress
 from ojs.queue import Queue, QueueStats
 from ojs.retry import RetryPolicy
+from ojs.transport.rate_limiter import RetryConfig
 from ojs.worker import Worker, WorkerState
 from ojs.workflow import (
     Workflow,
@@ -97,7 +100,10 @@ __all__ = [
     "JobNotFoundError",
     "QueuePausedError",
     "RateLimitedError",
+    # Rate Limiting
+    "RetryConfig",
     # Progress
     "report_progress",
     # ML/AI Resource Extension (available via ojs.ml)
+    # Serverless adapters (available via ojs.serverless)
 ]
