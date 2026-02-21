@@ -12,3 +12,4 @@ jobs:
   automerge:
     if: github.actor == 'dependabot[bot]'
     uses: openjobspec/.github/.github/workflows/dependabot-automerge.yml@main
+
