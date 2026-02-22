@@ -193,3 +193,4 @@ class FakeTransport(Transport):
 
     async def close(self) -> None:
         pass
+
