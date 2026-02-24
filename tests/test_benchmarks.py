@@ -340,7 +340,11 @@ class TestMiddlewareChain:
         async def handler(c: JobContext) -> str:
             return "done"
 
-        asyncio.get_event_loop().run_until_complete(chain.execute(ctx, handler))
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(chain.execute(ctx, handler))
+        finally:
+            loop.close()
 
     def test_middleware_direct(self, benchmark: Any) -> None:
         """Baseline: handler with no middleware."""
