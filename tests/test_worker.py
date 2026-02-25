@@ -131,3 +131,4 @@ class TestJobContext:
         assert not ctx.is_cancelled
         ctx.cancel()
         assert ctx.is_cancelled
+
