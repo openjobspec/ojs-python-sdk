@@ -23,3 +23,4 @@ html_theme_options = {
     "github_user": "openjobspec",
     "github_repo": "ojs-python-sdk",
 }
+
