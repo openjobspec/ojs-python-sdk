@@ -5,6 +5,22 @@ All notable changes to the OpenJobSpec Python SDK will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/openjobspec/ojs-python-sdk/compare/v0.1.0...v0.2.0) (2026-02-28)
+
+
+### Features
+
+* add configurable request timeout option ([80f5a07](https://github.com/openjobspec/ojs-python-sdk/commit/80f5a07d37a3d9fc692ce7fa01cf56dae433ba3b))
+* add durable execution module for Python SDK ([af0beaa](https://github.com/openjobspec/ojs-python-sdk/commit/af0beaa15c4c49b937b27338f285dce1d5ef1e5c))
+* implement exponential backoff for retries ([8f93841](https://github.com/openjobspec/ojs-python-sdk/commit/8f938416e2bf2966bf2e17d42e388a221736e19d))
+
+
+### Bug Fixes
+
+* correct asyncio task cancellation handling ([9bb4067](https://github.com/openjobspec/ojs-python-sdk/commit/9bb4067fd66b6012fe38589fb1797123fcf90000))
+* correct error handling in graceful shutdown ([4e33914](https://github.com/openjobspec/ojs-python-sdk/commit/4e339149cfed75083e643572caa851e5d55118ab))
+* handle empty response body gracefully ([113fbb7](https://github.com/openjobspec/ojs-python-sdk/commit/113fbb7c7af9dca299e9ddd9afb72e8fff031a95))
+
 ## [Unreleased]
 
 ## [0.1.0] - 2025-02-12
