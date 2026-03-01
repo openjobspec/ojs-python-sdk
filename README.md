@@ -196,6 +196,21 @@ jobs = await client.enqueue_batch([
 
 ### Workflow Operations
 
+OJS provides three workflow primitives — **chain** (sequential), **group** (parallel fan-out/fan-in), and **batch** (parallel with callbacks):
+
+```mermaid
+graph LR
+    subgraph Chain
+    A1[Step 1] --> A2[Step 2] --> A3[Step 3]
+    end
+```
+```mermaid
+graph TD
+    subgraph Group
+    S[Start] --> G1[Task A] & G2[Task B] & G3[Task C] --> J[All Complete]
+    end
+```
+
 | Method | Signature | Returns | Description |
 |--------|-----------|---------|-------------|
 | `workflow` | `(definition: WorkflowDefinition)` | `Workflow` | Create and start a workflow |
