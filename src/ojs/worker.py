@@ -227,6 +227,10 @@ class Worker:
                 )
                 for task in self._active_jobs.values():
                     task.cancel()
+                # Await cancelled tasks to let finally blocks execute
+                await asyncio.gather(
+                    *self._active_jobs.values(), return_exceptions=True
+                )
 
         # Cancel sibling tasks in the TaskGroup
         raise asyncio.CancelledError
@@ -307,7 +311,7 @@ class Worker:
             )
             return
 
-        ctx = JobContext(job=job, attempt=job.attempt or 1)
+        ctx = JobContext(job=job, attempt=job.attempt or 1, _transport=self._transport)
 
         try:
             result = await self._execution_middleware.execute(ctx, handler)

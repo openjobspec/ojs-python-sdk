@@ -111,6 +111,10 @@ class HTTPTransport(Transport):
                 ) from e
             except httpx.TimeoutException as e:
                 raise OJSTimeoutError(f"Request to OJS server timed out: {e}") from e
+            except (httpx.ReadError, httpx.WriteError, httpx.PoolTimeout) as e:
+                raise OJSConnectionError(
+                    f"Communication error with OJS server at {self._base_url}: {e}"
+                ) from e
 
             if response.status_code == 429 and cfg.enabled and attempt < cfg.max_retries:
                 retry_after: float | None = None
@@ -122,13 +126,21 @@ class HTTPTransport(Transport):
                 continue
 
             if response.status_code >= 400:
-                body = response.json()
+                try:
+                    body = response.json()
+                except ValueError:
+                    body = {"error": {"message": response.text or "Unknown error", "code": "parse_error"}}
                 headers = dict(response.headers)
                 raise_for_error(response.status_code, body, headers)
 
             if response.status_code == 204:
                 return {}
-            result: dict[str, Any] = response.json()
+            try:
+                result: dict[str, Any] = response.json()
+            except ValueError as e:
+                raise OJSConnectionError(
+                    f"Invalid JSON response from OJS server: {e}"
+                ) from e
             return result
 
         # Unreachable in practice — the last iteration raises via raise_for_error
@@ -200,6 +212,9 @@ class HTTPTransport(Transport):
 
     async def progress(self, body: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", "/workers/progress", json=body)
+
+    async def get_progress(self, job_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/jobs/{job_id}/progress")
 
     # --- Queue Operations ---
 
