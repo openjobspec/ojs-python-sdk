@@ -162,3 +162,4 @@ def raise_for_error(
         raise RateLimitedError(status_code, detail, retry_after=retry_after, rate_limit=rate_limit)
 
     raise OJSAPIError(status_code, detail)
+
