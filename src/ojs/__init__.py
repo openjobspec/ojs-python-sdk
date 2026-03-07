@@ -56,6 +56,13 @@ from ojs.workflow import (
     chain,
     group,
 )
+from ojs.durable import DurableContext
+from ojs.encryption import (
+    EncryptionCodec,
+    StaticKeyProvider,
+    encryption_middleware,
+    decryption_middleware,
+)
 
 __version__ = "0.1.0"
 __ojs_specversion__ = "1.0"
@@ -104,6 +111,13 @@ __all__ = [
     "RetryConfig",
     # Progress
     "report_progress",
+    # Durable execution
+    "DurableContext",
+    # Encryption
+    "EncryptionCodec",
+    "StaticKeyProvider",
+    "encryption_middleware",
+    "decryption_middleware",
     # ML/AI Resource Extension (available via ojs.ml)
     # Serverless adapters (available via ojs.serverless)
 ]
