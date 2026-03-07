@@ -322,3 +322,4 @@ class Transport(abc.ABC):
     @abc.abstractmethod
     async def close(self) -> None:
         """Close the transport and release resources."""
+
