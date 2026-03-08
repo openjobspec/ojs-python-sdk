@@ -6,6 +6,7 @@ Implements the OJS HTTP/REST Protocol Binding (Layer 3).
 from __future__ import annotations
 
 import contextlib
+import uuid
 from typing import Any
 from urllib.parse import quote
 
@@ -20,6 +21,7 @@ from ojs.workflow import Workflow, WorkflowDefinition
 
 _OJS_CONTENT_TYPE = "application/openjobspec+json"
 _OJS_BASE_PATH = "/ojs/v1"
+_OJS_VERSION = "1.0"
 
 
 class HTTPTransport(Transport):
@@ -50,6 +52,7 @@ class HTTPTransport(Transport):
         default_headers = {
             "Content-Type": _OJS_CONTENT_TYPE,
             "Accept": _OJS_CONTENT_TYPE,
+            "OJS-Version": _OJS_VERSION,
         }
         if headers:
             default_headers.update(headers)
@@ -59,6 +62,7 @@ class HTTPTransport(Transport):
             timeout=timeout,
             headers=default_headers,
         )
+        self._closed = False
 
     def _url(self, path: str) -> str:
         return f"{_OJS_BASE_PATH}{path}"
@@ -104,6 +108,7 @@ class HTTPTransport(Transport):
             try:
                 response = await self._client.request(
                     method, url, json=json, params=params,
+                    headers={"X-Request-ID": str(uuid.uuid4())},
                 )
             except httpx.ConnectError as e:
                 raise OJSConnectionError(
@@ -313,5 +318,17 @@ class HTTPTransport(Transport):
         return await self._request("GET", "/health")
 
     async def close(self) -> None:
-        if self._owns_client:
+        if self._owns_client and not self._closed:
+            self._closed = True
             await self._client.aclose()
+
+    # --- Generic Request (used by durable execution) ---
+
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return await self._request(method, path, json=body)

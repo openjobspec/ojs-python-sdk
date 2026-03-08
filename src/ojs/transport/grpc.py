@@ -410,6 +410,18 @@ class GrpcTransport(Transport):
         if self._owns_channel:
             await self._channel.close()
 
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        raise NotImplementedError(
+            "Generic request() is not supported over gRPC. "
+            "Durable execution checkpoints require an HTTP transport."
+        )
+
     # --- Internal ---
 
     async def _call(self, method: str, request: dict[str, Any]) -> dict[str, Any]:

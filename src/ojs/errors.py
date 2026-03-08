@@ -115,6 +115,8 @@ def raise_for_error(
 ) -> None:
     """Parse an OJS error response and raise the appropriate exception."""
     error_data = body.get("error", {})
+    if not isinstance(error_data, dict):
+        error_data = {"code": "unknown", "message": str(error_data) or "Unknown error"}
     detail = OJSErrorDetail(
         code=error_data.get("code", "unknown"),
         message=error_data.get("message", "Unknown error"),

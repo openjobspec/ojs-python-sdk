@@ -323,3 +323,26 @@ class Transport(abc.ABC):
     async def close(self) -> None:
         """Close the transport and release resources."""
 
+    # --- Generic Request (used by durable execution) ---
+
+    @abc.abstractmethod
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Make a generic HTTP request to the OJS server.
+
+        Used by durable execution for checkpoint operations.
+
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE).
+            path: Request path (relative to OJS base path).
+            body: Optional JSON request body.
+
+        Returns:
+            Parsed JSON response body.
+        """
+

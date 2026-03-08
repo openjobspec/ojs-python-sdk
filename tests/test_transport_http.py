@@ -476,3 +476,37 @@ class TestClose:
         await transport.close()
         assert not client.is_closed
         await client.aclose()
+
+    async def test_close_idempotent(self) -> None:
+        transport = HTTPTransport(BASE_URL)
+        await transport.close()
+        await transport.close()  # Should not raise
+
+
+class TestGenericRequest:
+    async def test_request_get(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
+        httpx_mock.add_response(
+            url=f"{BASE_URL}{_OJS_BASE_PATH}/checkpoints/job-1/resume",
+            method="GET",
+            json={"has_checkpoint": False},
+        )
+        result = await transport.request("GET", "/checkpoints/job-1/resume")
+        assert result == {"has_checkpoint": False}
+
+    async def test_request_post_with_body(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
+        httpx_mock.add_response(
+            url=f"{BASE_URL}{_OJS_BASE_PATH}/checkpoints/job-1",
+            method="POST",
+            json={"ok": True},
+        )
+        result = await transport.request("POST", "/checkpoints/job-1", body={"state": {"step": 5}})
+        assert result == {"ok": True}
+
+    async def test_request_delete(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
+        httpx_mock.add_response(
+            url=f"{BASE_URL}{_OJS_BASE_PATH}/checkpoints/job-1",
+            method="DELETE",
+            status_code=204,
+        )
+        result = await transport.request("DELETE", "/checkpoints/job-1")
+        assert result == {}

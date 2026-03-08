@@ -318,25 +318,31 @@ class Worker:
             await self._transport.ack(job.id, result=result)
         except asyncio.CancelledError:
             logger.warning("Job %s cancelled", job.id)
-            await self._transport.nack(
-                job.id,
-                {
-                    "code": "cancelled",
-                    "message": "Job execution was cancelled during worker shutdown",
-                    "retryable": True,
-                },
-            )
+            try:
+                await asyncio.shield(self._transport.nack(
+                    job.id,
+                    {
+                        "code": "cancelled",
+                        "message": "Job execution was cancelled during worker shutdown",
+                        "retryable": True,
+                    },
+                ))
+            except (asyncio.CancelledError, Exception) as nack_err:
+                logger.error("Job %s: failed to nack after cancellation: %s", job.id, nack_err)
         except Exception as exc:
             logger.exception("Job %s failed: %s", job.id, exc)
-            await self._transport.nack(
-                job.id,
-                {
-                    "code": "handler_error",
-                    "message": str(exc),
-                    "retryable": True,
-                    "details": {"traceback": traceback.format_exc()},
-                },
-            )
+            try:
+                await asyncio.shield(self._transport.nack(
+                    job.id,
+                    {
+                        "code": "handler_error",
+                        "message": str(exc),
+                        "retryable": True,
+                        "details": {"traceback": traceback.format_exc()},
+                    },
+                ))
+            except (asyncio.CancelledError, Exception) as nack_err:
+                logger.error("Job %s: failed to nack after error: %s", job.id, nack_err)
 
     # --- Heartbeat Loop ---
 

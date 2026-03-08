@@ -213,6 +213,7 @@ class JobContext:
     attempt: int = 1
     parent_results: list[Any] = field(default_factory=list)
     _cancelled: bool = False
+    _transport: Any = field(default=None, repr=False)
 
     @property
     def job_id(self) -> str:

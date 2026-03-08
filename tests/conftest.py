@@ -194,3 +194,18 @@ class FakeTransport(Transport):
     async def close(self) -> None:
         pass
 
+    async def progress(self, body: dict[str, Any]) -> dict[str, Any]:
+        return {"job_id": body.get("job_id", ""), "progress": body.get("progress", 0)}
+
+    async def get_progress(self, job_id: str) -> dict[str, Any]:
+        return {"job_id": job_id, "progress": 0}
+
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return {}
+
