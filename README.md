@@ -813,7 +813,3 @@ For SDK development:
 ## License
 
 Apache 2.0 -- see [LICENSE](LICENSE).
-
-
-
-
