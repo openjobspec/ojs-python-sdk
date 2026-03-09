@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from ojs.errors import OJSError
+from ojs.errors import OJSError, OJSValidationError
 from ojs.job import Job, JobRequest, JobState
 from ojs.middleware import EnqueueMiddleware, EnqueueMiddlewareChain
 from ojs.queue import Queue, QueueStats
@@ -128,7 +128,15 @@ class Client:
 
         Returns:
             The created Job with server-assigned ID and state.
+
+        Raises:
+            OJSValidationError: If job_type is empty or queue is empty.
         """
+        if not job_type or not job_type.strip():
+            raise OJSValidationError("job_type must not be empty")
+        if not queue or not queue.strip():
+            raise OJSValidationError("queue must not be empty")
+
         request = JobRequest(
             type=job_type,
             args=args or [],

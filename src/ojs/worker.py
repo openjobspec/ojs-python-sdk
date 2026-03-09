@@ -194,6 +194,10 @@ class Worker:
                 if not isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt)):
                     logger.error("Worker error: %s", exc)
         finally:
+            # Remove signal handlers to prevent duplicates on restart
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                loop.remove_signal_handler(sig)
             self._state = WorkerState.IDLE
             logger.info("Worker %s stopped", self._worker_id)
 
@@ -243,6 +247,9 @@ class Worker:
 
     async def _fetch_loop(self) -> None:
         """Continuously fetch jobs from queues and dispatch them."""
+        consecutive_errors = 0
+        max_backoff = 30.0
+
         while self._state == WorkerState.RUNNING:
             try:
                 if self._semaphore is None:
@@ -266,9 +273,11 @@ class Worker:
 
                 if not jobs:
                     self._semaphore.release()
+                    consecutive_errors = 0
                     await asyncio.sleep(self._poll_interval)
                     continue
 
+                consecutive_errors = 0
                 for job in jobs:
                     task = asyncio.create_task(
                         self._process_job(job),
@@ -280,8 +289,17 @@ class Worker:
             except asyncio.CancelledError:
                 break
             except Exception:
-                logger.exception("Error in fetch loop")
-                await asyncio.sleep(self._poll_interval)
+                consecutive_errors += 1
+                backoff = min(
+                    self._poll_interval * (2 ** (consecutive_errors - 1)),
+                    max_backoff,
+                )
+                logger.exception(
+                    "Error in fetch loop (attempt %d, backoff %.1fs)",
+                    consecutive_errors,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
 
     def _make_done_callback(self, job_id: str) -> Callable[[asyncio.Task[Any]], None]:
         def _callback(task: asyncio.Task[Any]) -> None:
