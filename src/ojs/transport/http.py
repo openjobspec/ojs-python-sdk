@@ -5,7 +5,9 @@ Implements the OJS HTTP/REST Protocol Binding (Layer 3).
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import logging
 import uuid
 from typing import Any
 from urllib.parse import quote
@@ -22,6 +24,8 @@ from ojs.workflow import Workflow, WorkflowDefinition
 _OJS_CONTENT_TYPE = "application/openjobspec+json"
 _OJS_BASE_PATH = "/ojs/v1"
 _OJS_VERSION = "1.0"
+
+logger = logging.getLogger("ojs.transport.http")
 
 
 class HTTPTransport(Transport):
@@ -320,7 +324,10 @@ class HTTPTransport(Transport):
     async def close(self) -> None:
         if self._owns_client and not self._closed:
             self._closed = True
-            await self._client.aclose()
+            try:
+                await asyncio.wait_for(self._client.aclose(), timeout=5.0)
+            except asyncio.TimeoutError:
+                logger.warning("HTTP client close timed out after 5s")
 
     # --- Generic Request (used by durable execution) ---
 
