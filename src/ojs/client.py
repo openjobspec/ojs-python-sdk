@@ -7,6 +7,8 @@ and querying job/queue state.
 from __future__ import annotations
 
 import asyncio
+import re
+import threading
 from typing import Any
 
 from ojs.errors import OJSError, OJSValidationError
@@ -18,6 +20,11 @@ from ojs.transport.base import Transport
 from ojs.transport.http import HTTPTransport
 from ojs.transport.rate_limiter import RetryConfig
 from ojs.workflow import Workflow, WorkflowDefinition
+
+_TYPE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$")
+_QUEUE_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9]*[-.]?[a-z0-9]+)*$")
+_MAX_TYPE_LENGTH = 255
+_MAX_QUEUE_LENGTH = 128
 
 
 class Client:
@@ -134,8 +141,26 @@ class Client:
         """
         if not job_type or not job_type.strip():
             raise OJSValidationError("job_type must not be empty")
+        if len(job_type) > _MAX_TYPE_LENGTH:
+            raise OJSValidationError(
+                f"job_type must not exceed {_MAX_TYPE_LENGTH} characters, got {len(job_type)}"
+            )
+        if not _TYPE_PATTERN.match(job_type):
+            raise OJSValidationError(
+                f"invalid job_type {job_type!r}: must match pattern "
+                "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+            )
         if not queue or not queue.strip():
             raise OJSValidationError("queue must not be empty")
+        if len(queue) > _MAX_QUEUE_LENGTH:
+            raise OJSValidationError(
+                f"queue must not exceed {_MAX_QUEUE_LENGTH} characters, got {len(queue)}"
+            )
+        if not _QUEUE_PATTERN.match(queue):
+            raise OJSValidationError(
+                f"invalid queue {queue!r}: must match pattern "
+                "^[a-z0-9][a-z0-9\\-.]*$"
+            )
 
         request = JobRequest(
             type=job_type,
@@ -515,11 +540,13 @@ class SyncClient:
     ) -> None:
         self._client = Client(url, timeout=timeout, headers=headers, retry_config=retry_config)
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._loop_lock = threading.Lock()
 
     def _get_loop(self) -> asyncio.AbstractEventLoop:
-        if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-        return self._loop
+        with self._loop_lock:
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+            return self._loop
 
     def enqueue(self, job_type: str, args: list[Any] | None = None, **kwargs: Any) -> Job:
         return self._get_loop().run_until_complete(self._client.enqueue(job_type, args, **kwargs))

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import enum
 import logging
+import random
 import signal
 import traceback
 import uuid
@@ -274,7 +275,8 @@ class Worker:
                 if not jobs:
                     self._semaphore.release()
                     consecutive_errors = 0
-                    await asyncio.sleep(self._poll_interval)
+                    jittered = self._poll_interval * (0.8 + random.random() * 0.4)
+                    await asyncio.sleep(jittered)
                     continue
 
                 consecutive_errors = 0
@@ -366,6 +368,7 @@ class Worker:
 
     async def _heartbeat_loop(self) -> None:
         """Periodically send heartbeats to the OJS server."""
+        consecutive_hb_errors = 0
         while self._state in (WorkerState.RUNNING, WorkerState.QUIET):
             try:
                 active_ids = list(self._active_jobs.keys())
@@ -386,9 +389,21 @@ class Worker:
                         await self.stop()
                         return
 
+                consecutive_hb_errors = 0
             except asyncio.CancelledError:
                 break
             except Exception:
-                logger.exception("Error in heartbeat loop")
+                consecutive_hb_errors += 1
+                backoff = min(
+                    self._heartbeat_interval * (2 ** (consecutive_hb_errors - 1)),
+                    60.0,
+                )
+                logger.exception(
+                    "Error in heartbeat loop (attempt %d, backoff %.1fs)",
+                    consecutive_hb_errors,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+                continue
 
             await asyncio.sleep(self._heartbeat_interval)

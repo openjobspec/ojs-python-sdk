@@ -16,19 +16,21 @@ logger = logging.getLogger("ojs.transport.rate_limiter")
 
 @dataclass
 class RetryConfig:
-    """Configuration for automatic 429 rate-limit retries.
+    """Configuration for automatic rate-limit and transient error retries.
 
     Attributes:
-        max_retries: Maximum number of retry attempts on 429. Default: 3.
+        max_retries: Maximum number of retry attempts. Default: 3.
         min_backoff: Minimum backoff delay in seconds. Default: 0.5.
         max_backoff: Maximum backoff delay in seconds. Default: 30.0.
         enabled: Whether automatic retry is enabled. Default: True.
+        retry_server_errors: Whether to retry on 502, 503, 504 responses. Default: True.
     """
 
     max_retries: int = 3
     min_backoff: float = 0.5
     max_backoff: float = 30.0
     enabled: bool = True
+    retry_server_errors: bool = True
 
 
 def calculate_backoff(

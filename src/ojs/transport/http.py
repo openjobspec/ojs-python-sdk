@@ -134,6 +134,10 @@ class HTTPTransport(Transport):
                 await sleep_before_retry(attempt, retry_after, cfg)
                 continue
 
+            if response.status_code in (502, 503, 504) and cfg.retry_server_errors and cfg.enabled and attempt < cfg.max_retries:
+                await sleep_before_retry(attempt, None, cfg)
+                continue
+
             if response.status_code >= 400:
                 try:
                     body = response.json()
@@ -152,11 +156,11 @@ class HTTPTransport(Transport):
                 ) from e
             return result
 
-        # Unreachable in practice — the last iteration raises via raise_for_error
-        body = response.json()  # type: ignore[possibly-undefined]
-        headers = dict(response.headers)  # type: ignore[possibly-undefined]
-        raise_for_error(response.status_code, body, headers)  # type: ignore[possibly-undefined]
-        return {}  # pragma: no cover
+        # All retry attempts exhausted on 429 — raise the last response as error.
+        # This path is reached when the for loop completes without returning.
+        raise OJSConnectionError(
+            f"Request to OJS server failed after {max_attempts} attempts"
+        )
 
     # --- Job Operations ---
 

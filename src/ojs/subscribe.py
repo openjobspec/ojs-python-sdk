@@ -77,12 +77,13 @@ async def subscribe(
                     event_type = ""
                     event_id = ""
                     event_data = ""
-                elif line.startswith("event: "):
-                    event_type = line[7:]
-                elif line.startswith("id: "):
-                    event_id = line[4:]
-                elif line.startswith("data: "):
-                    event_data = line[6:]
+                elif line.startswith("event:"):
+                    event_type = line[6:].lstrip()
+                elif line.startswith("id:"):
+                    event_id = line[3:].lstrip()
+                elif line.startswith("data:"):
+                    chunk = line[5:].lstrip()
+                    event_data = event_data + "\n" + chunk if event_data else chunk
 
 
 async def subscribe_job(
