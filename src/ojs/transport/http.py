@@ -148,11 +148,18 @@ class HTTPTransport(Transport):
 
             if response.status_code == 204:
                 return {}
+
+            content_type = response.headers.get("content-type", "")
+            if "application/json" not in content_type:
+                # Non-JSON successful response (e.g., from misconfigured proxy)
+                return {"_raw": response.text, "_content_type": content_type}
+
             try:
                 result: dict[str, Any] = response.json()
             except ValueError as e:
                 raise OJSConnectionError(
-                    f"Invalid JSON response from OJS server: {e}"
+                    f"Invalid JSON response from OJS server "
+                    f"(Content-Type: {content_type}): {e}"
                 ) from e
             return result
 
