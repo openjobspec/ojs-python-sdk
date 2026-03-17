@@ -180,11 +180,11 @@ class HTTPTransport(Transport):
         return [Job.from_dict(j) for j in data["jobs"]]
 
     async def info(self, job_id: str) -> Job:
-        data = await self._request("GET", f"/jobs/{job_id}")
+        data = await self._request("GET", f"/jobs/{quote(job_id, safe='')}")
         return Job.from_dict(data["job"])
 
     async def cancel(self, job_id: str) -> Job:
-        data = await self._request("DELETE", f"/jobs/{job_id}")
+        data = await self._request("DELETE", f"/jobs/{quote(job_id, safe='')}")
         return Job.from_dict(data["job"])
 
     # --- Worker Operations ---
@@ -234,7 +234,7 @@ class HTTPTransport(Transport):
         return await self._request("POST", "/workers/progress", json=body)
 
     async def get_progress(self, job_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/jobs/{job_id}/progress")
+        return await self._request("GET", f"/jobs/{quote(job_id, safe='')}/progress")
 
     # --- Queue Operations ---
 
@@ -259,11 +259,11 @@ class HTTPTransport(Transport):
         return Workflow.from_dict(data["workflow"])
 
     async def get_workflow(self, workflow_id: str) -> Workflow:
-        data = await self._request("GET", f"/workflows/{workflow_id}")
+        data = await self._request("GET", f"/workflows/{quote(workflow_id, safe='')}")
         return Workflow.from_dict(data["workflow"])
 
     async def cancel_workflow(self, workflow_id: str) -> dict[str, Any]:
-        return await self._request("DELETE", f"/workflows/{workflow_id}")
+        return await self._request("DELETE", f"/workflows/{quote(workflow_id, safe='')}")
 
     # --- Manifest ---
 
@@ -284,11 +284,11 @@ class HTTPTransport(Transport):
         return await self._request("GET", "/dead-letter", params=params)
 
     async def retry_dead_letter_job(self, job_id: str) -> Job:
-        data = await self._request("POST", f"/dead-letter/{job_id}/retry")
+        data = await self._request("POST", f"/dead-letter/{quote(job_id, safe='')}/retry")
         return Job.from_dict(data["job"])
 
     async def delete_dead_letter_job(self, job_id: str) -> dict[str, Any]:
-        return await self._request("DELETE", f"/dead-letter/{job_id}")
+        return await self._request("DELETE", f"/dead-letter/{quote(job_id, safe='')}")
 
     # --- Cron Operations ---
 
@@ -304,7 +304,7 @@ class HTTPTransport(Transport):
         return await self._request("POST", "/cron", json=body)
 
     async def unregister_cron_job(self, name: str) -> dict[str, Any]:
-        return await self._request("DELETE", f"/cron/{name}")
+        return await self._request("DELETE", f"/cron/{quote(name, safe='')}")
 
     # --- Schema Operations ---
 

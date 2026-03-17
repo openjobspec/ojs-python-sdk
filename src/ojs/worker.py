@@ -321,7 +321,7 @@ class Worker:
         handler = self._handlers.get(job.type)
         if handler is None:
             logger.error("No handler registered for job type %r", job.type)
-            await self._transport.nack(
+            await self._nack_with_retry(
                 job.id,
                 {
                     "code": "handler_error",
@@ -335,11 +335,11 @@ class Worker:
 
         try:
             result = await self._execution_middleware.execute(ctx, handler)
-            await self._transport.ack(job.id, result=result)
+            await self._ack_with_retry(job.id, result=result)
         except asyncio.CancelledError:
             logger.warning("Job %s cancelled", job.id)
             try:
-                await asyncio.shield(self._transport.nack(
+                await asyncio.shield(self._nack_with_retry(
                     job.id,
                     {
                         "code": "cancelled",
@@ -352,7 +352,7 @@ class Worker:
         except Exception as exc:
             logger.exception("Job %s failed: %s", job.id, exc)
             try:
-                await asyncio.shield(self._transport.nack(
+                await asyncio.shield(self._nack_with_retry(
                     job.id,
                     {
                         "code": "handler_error",
@@ -363,6 +363,38 @@ class Worker:
                 ))
             except (asyncio.CancelledError, Exception) as nack_err:
                 logger.error("Job %s: failed to nack after error: %s", job.id, nack_err)
+
+    _ACK_NACK_MAX_RETRIES = 3
+
+    async def _ack_with_retry(self, job_id: str, result: object = None) -> None:
+        """ACK a job with up to _ACK_NACK_MAX_RETRIES attempts."""
+        last_err: Exception | None = None
+        for attempt in range(self._ACK_NACK_MAX_RETRIES):
+            try:
+                await self._transport.ack(job_id, result=result)
+                return
+            except Exception as err:
+                last_err = err
+                logger.warning("ack attempt %d failed for job %s: %s", attempt + 1, job_id, err)
+                if attempt < self._ACK_NACK_MAX_RETRIES - 1:
+                    await asyncio.sleep((attempt + 1) * 0.5)
+        if last_err is not None:
+            raise last_err
+
+    async def _nack_with_retry(self, job_id: str, error: dict[str, object]) -> None:
+        """NACK a job with up to _ACK_NACK_MAX_RETRIES attempts."""
+        last_err: Exception | None = None
+        for attempt in range(self._ACK_NACK_MAX_RETRIES):
+            try:
+                await self._transport.nack(job_id, error)
+                return
+            except Exception as err:
+                last_err = err
+                logger.warning("nack attempt %d failed for job %s: %s", attempt + 1, job_id, err)
+                if attempt < self._ACK_NACK_MAX_RETRIES - 1:
+                    await asyncio.sleep((attempt + 1) * 0.5)
+        if last_err is not None:
+            raise last_err
 
     # --- Heartbeat Loop ---
 
