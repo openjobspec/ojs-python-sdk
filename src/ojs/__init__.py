@@ -120,4 +120,21 @@ __all__ = [
     "decryption_middleware",
     # ML/AI Resource Extension (available via ojs.ml)
     # Serverless adapters (available via ojs.serverless)
+    # Agent Substrate Protocol (available via ojs.agent)
+    # Attestation (available via ojs.attest)
+    # Recorder (available via ojs.recorder)
 ]
+
+# Lazy imports for moonshot submodules — avoid import-time overhead
+# for users who don't need them. Use: `from ojs.agent import AgentClient`
+def __getattr__(name: str):
+    if name == "agent":
+        from ojs import agent as _agent
+        return _agent
+    if name == "attest":
+        from ojs import attest as _attest
+        return _attest
+    if name == "recorder":
+        from ojs import recorder as _recorder
+        return _recorder
+    raise AttributeError(f"module 'ojs' has no attribute {name!r}")
