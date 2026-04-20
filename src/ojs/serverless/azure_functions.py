@@ -265,7 +265,7 @@ class AzureFunctionsHandler:
                     "status": "failed",
                     "error": {
                         "code": "handler_error",
-                        "message": str(exc),
+                        "message": type(exc).__name__,
                         "retryable": True,
                     },
                 }),
