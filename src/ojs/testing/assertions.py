@@ -19,81 +19,37 @@ Usage::
 
 from __future__ import annotations
 
-from collections.abc import Callable, Generator
+from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
-
-@dataclass
-class FakeJob:
-    """A job recorded in fake mode."""
-
-    id: str
-    type: str
-    queue: str
-    args: list[Any]
-    meta: dict[str, Any]
-    state: str = "available"
-    attempt: int = 0
-    options: dict[str, Any] = field(default_factory=dict)
-    created_at: str = ""
-
-    def __post_init__(self) -> None:
-        if not self.created_at:
-            self.created_at = datetime.now(UTC).isoformat()
+from ojs.transport.fake import (
+    FakeJob,
+    FakeStore,
+    FakeTransport,
+    activate_fake_transport,
+    current_fake_transport,
+)
 
 
-class FakeStore:
-    """In-memory store for fake mode."""
-
-    def __init__(self) -> None:
-        self.enqueued: list[FakeJob] = []
-        self.performed: list[FakeJob] = []
-        self.handlers: dict[str, Callable[[FakeJob], None]] = {}
-        self._next_id = 0
-
-    def record_enqueue(
-        self,
-        job_type: str,
-        args: list[Any],
-        queue: str = "default",
-        meta: dict[str, Any] | None = None,
-        options: dict[str, Any] | None = None,
-    ) -> FakeJob:
-        self._next_id += 1
-        job = FakeJob(
-            id=f"fake-{self._next_id:06d}",
-            type=job_type,
-            queue=queue,
-            args=args,
-            meta=meta or {},
-            options=options or {},
-        )
-        self.enqueued.append(job)
-        return job
-
-    def register_handler(self, job_type: str, handler: Callable[[FakeJob], None]) -> None:
-        self.handlers[job_type] = handler
-
-    def clear(self) -> None:
-        self.enqueued.clear()
-        self.performed.clear()
-
-
-# Global state
-_active_store: FakeStore | None = None
-
-
-def _get_store() -> FakeStore:
-    if _active_store is None:
+def _get_store(
+    store: FakeStore | None = None,
+    transport: FakeTransport | None = None,
+) -> FakeStore:
+    if store is not None:
+        return store
+    if transport is not None:
+        return transport.store
+    active = current_fake_transport()
+    if active is None:
         raise RuntimeError("OJS testing: not in fake mode. Use `with fake_mode():` first.")
-    return _active_store
+    return active.store
 
 
 @contextmanager
-def fake_mode() -> Generator[FakeStore, None, None]:
+def fake_mode(
+    transport: FakeTransport | None = None,
+) -> Iterator[FakeStore]:
     """Context manager that activates fake mode.
 
     Usage::
@@ -102,23 +58,20 @@ def fake_mode() -> Generator[FakeStore, None, None]:
             client.enqueue("email.send", [{"to": "user@example.com"}])
             assert_enqueued("email.send")
     """
-    global _active_store
-    store = FakeStore()
-    _active_store = store
-    try:
-        yield store
-    finally:
-        _active_store = None
+    selected = transport or FakeTransport()
+    with activate_fake_transport(selected):
+        yield selected.store
 
 
 def is_fake_mode() -> bool:
     """Return True if fake mode is active."""
-    return _active_store is not None
+    return current_fake_transport() is not None
 
 
 def get_store() -> FakeStore | None:
     """Return the active fake store, or None."""
-    return _active_store
+    active = current_fake_transport()
+    return active.store if active is not None else None
 
 
 def assert_enqueued(
@@ -128,20 +81,28 @@ def assert_enqueued(
     queue: str | None = None,
     meta: dict[str, Any] | None = None,
     count: int | None = None,
+    store: FakeStore | None = None,
+    transport: FakeTransport | None = None,
 ) -> None:
     """Assert that at least one job of the given type was enqueued."""
-    store = _get_store()
-    matches = _find_matching(store.enqueued, job_type, args=args, queue=queue, meta=meta)
+    selected = _get_store(store, transport)
+    matches = _find_matching(
+        selected.enqueued,
+        job_type,
+        args=args,
+        queue=queue,
+        meta=meta,
+    )
 
     if count is not None:
         if len(matches) != count:
-            enqueued_types = {j.type for j in store.enqueued}
+            enqueued_types = {j.type for j in selected.enqueued}
             raise AssertionError(
                 f"Expected {count} enqueued job(s) of type '{job_type}', found {len(matches)}. "
                 f"Enqueued types: {enqueued_types}"
             )
     elif len(matches) == 0:
-        enqueued_types = {j.type for j in store.enqueued}
+        enqueued_types = {j.type for j in selected.enqueued}
         raise AssertionError(
             f"Expected at least one enqueued job of type '{job_type}', found none. "
             f"Enqueued types: {enqueued_types or 'none'}"
@@ -154,50 +115,80 @@ def refute_enqueued(
     args: list[Any] | None = None,
     queue: str | None = None,
     meta: dict[str, Any] | None = None,
+    store: FakeStore | None = None,
+    transport: FakeTransport | None = None,
 ) -> None:
     """Assert that NO job of the given type was enqueued."""
-    store = _get_store()
-    matches = _find_matching(store.enqueued, job_type, args=args, queue=queue, meta=meta)
+    selected = _get_store(store, transport)
+    matches = _find_matching(
+        selected.enqueued,
+        job_type,
+        args=args,
+        queue=queue,
+        meta=meta,
+    )
     if matches:
         raise AssertionError(
             f"Expected no enqueued jobs of type '{job_type}', but found {len(matches)}."
         )
 
 
-def assert_performed(job_type: str) -> None:
+def assert_performed(
+    job_type: str,
+    *,
+    store: FakeStore | None = None,
+    transport: FakeTransport | None = None,
+) -> None:
     """Assert that at least one job of the given type was performed."""
-    store = _get_store()
-    matches = [j for j in store.performed if j.type == job_type]
+    selected = _get_store(store, transport)
+    matches = [j for j in selected.performed if j.type == job_type]
     if not matches:
         raise AssertionError(
             f"Expected at least one performed job of type '{job_type}', found none."
         )
 
 
-def assert_completed(job_type: str) -> None:
+def assert_completed(
+    job_type: str,
+    *,
+    store: FakeStore | None = None,
+    transport: FakeTransport | None = None,
+) -> None:
     """Assert that at least one job of the given type completed successfully."""
-    store = _get_store()
+    selected = _get_store(store, transport)
     match = next(
-        (j for j in store.performed if j.type == job_type and j.state == "completed"), None
+        (job for job in selected.performed if job.type == job_type and job.state == "completed"),
+        None,
     )
     if not match:
         raise AssertionError(f"Expected a completed job of type '{job_type}', found none.")
 
 
-def assert_failed(job_type: str) -> None:
+def assert_failed(
+    job_type: str,
+    *,
+    store: FakeStore | None = None,
+    transport: FakeTransport | None = None,
+) -> None:
     """Assert that at least one job of the given type failed."""
-    store = _get_store()
+    selected = _get_store(store, transport)
     match = next(
-        (j for j in store.performed if j.type == job_type and j.state == "discarded"), None
+        (job for job in selected.performed if job.type == job_type and job.state == "discarded"),
+        None,
     )
     if not match:
         raise AssertionError(f"Expected a failed job of type '{job_type}', found none.")
 
 
-def all_enqueued(job_type: str | None = None, queue: str | None = None) -> list[FakeJob]:
+def all_enqueued(
+    job_type: str | None = None,
+    queue: str | None = None,
+    *,
+    store: FakeStore | None = None,
+    transport: FakeTransport | None = None,
+) -> list[FakeJob]:
     """Return all enqueued jobs, optionally filtered."""
-    store = _get_store()
-    jobs = store.enqueued
+    jobs = _get_store(store, transport).enqueued
     if job_type:
         jobs = [j for j in jobs if j.type == job_type]
     if queue:
@@ -205,21 +196,30 @@ def all_enqueued(job_type: str | None = None, queue: str | None = None) -> list[
     return list(jobs)
 
 
-def clear_all() -> None:
+def clear_all(
+    *,
+    store: FakeStore | None = None,
+    transport: FakeTransport | None = None,
+) -> None:
     """Clear all enqueued and performed jobs."""
-    _get_store().clear()
+    _get_store(store, transport).clear()
 
 
-def drain(*, max_jobs: int | None = None) -> int:
+def drain(
+    *,
+    max_jobs: int | None = None,
+    store: FakeStore | None = None,
+    transport: FakeTransport | None = None,
+) -> int:
     """Process all available enqueued jobs using registered handlers.
 
     Returns the number of jobs processed.
     """
-    store = _get_store()
+    selected = _get_store(store, transport)
     processed = 0
-    limit = max_jobs or len(store.enqueued)
+    limit = max_jobs or len(selected.enqueued)
 
-    for job in store.enqueued:
+    for job in selected.enqueued:
         if processed >= limit:
             break
         if job.state != "available":
@@ -227,7 +227,7 @@ def drain(*, max_jobs: int | None = None) -> int:
 
         job.state = "active"
         job.attempt += 1
-        handler = store.handlers.get(job.type)
+        handler = selected.handlers.get(job.type)
 
         if handler:
             try:
@@ -238,7 +238,7 @@ def drain(*, max_jobs: int | None = None) -> int:
         else:
             job.state = "completed"
 
-        store.performed.append(job)
+        selected.performed.append(job)
         processed += 1
 
     return processed
