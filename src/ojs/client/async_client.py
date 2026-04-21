@@ -6,13 +6,14 @@ and querying job/queue state.
 
 from __future__ import annotations
 
-import asyncio
-import re
-import threading
 from typing import Any
 
-from ojs.errors import OJSError, OJSValidationError
-from ojs.job import Job, JobRequest, JobState
+from ojs.client.enqueue_pipeline import (
+    ContextualEnqueueSink,
+    EnqueuePipeline,
+)
+from ojs.client.sync_runner import SyncRunner
+from ojs.job import Job, JobRequest
 from ojs.middleware import EnqueueMiddleware, EnqueueMiddlewareChain
 from ojs.queue import Queue, QueueStats
 from ojs.retry import RetryPolicy
@@ -20,11 +21,6 @@ from ojs.transport.base import Transport
 from ojs.transport.http import HTTPTransport
 from ojs.transport.rate_limiter import RetryConfig
 from ojs.workflow import Workflow, WorkflowDefinition
-
-_TYPE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$")
-_QUEUE_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9]*[-.]?[a-z0-9]+)*$")
-_MAX_TYPE_LENGTH = 255
-_MAX_QUEUE_LENGTH = 128
 
 
 class Client:
@@ -70,9 +66,19 @@ class Client:
         retry_config: RetryConfig | None = None,
     ) -> None:
         self._transport = transport or HTTPTransport(
-            url, timeout=timeout, headers=headers, retry_config=retry_config,
+            url,
+            timeout=timeout,
+            headers=headers,
+            retry_config=retry_config,
         )
         self._enqueue_middleware = EnqueueMiddlewareChain()
+        self._enqueue_pipeline = EnqueuePipeline(
+            self._enqueue_middleware,
+            ContextualEnqueueSink(
+                self._transport,
+                allow_context_fake=transport is None,
+            ),
+        )
 
     async def __aenter__(self) -> Client:
         return self
@@ -139,29 +145,6 @@ class Client:
         Raises:
             OJSValidationError: If job_type is empty or queue is empty.
         """
-        if not job_type or not job_type.strip():
-            raise OJSValidationError("job_type must not be empty")
-        if len(job_type) > _MAX_TYPE_LENGTH:
-            raise OJSValidationError(
-                f"job_type must not exceed {_MAX_TYPE_LENGTH} characters, got {len(job_type)}"
-            )
-        if not _TYPE_PATTERN.match(job_type):
-            raise OJSValidationError(
-                f"invalid job_type {job_type!r}: must match pattern "
-                "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
-            )
-        if not queue or not queue.strip():
-            raise OJSValidationError("queue must not be empty")
-        if len(queue) > _MAX_QUEUE_LENGTH:
-            raise OJSValidationError(
-                f"queue must not exceed {_MAX_QUEUE_LENGTH} characters, got {len(queue)}"
-            )
-        if not _QUEUE_PATTERN.match(queue):
-            raise OJSValidationError(
-                f"invalid queue {queue!r}: must match pattern "
-                "^[a-z0-9][a-z0-9\\-.]*$"
-            )
-
         request = JobRequest(
             type=job_type,
             args=args or [],
@@ -176,35 +159,7 @@ class Client:
             tags=tags,
             schema=schema,
         )
-
-        # In fake mode, record the enqueue without hitting the transport
-        from ojs.testing import get_store
-
-        store = get_store()
-        if store is not None:
-            fake_job = store.record_enqueue(
-                job_type=job_type,
-                args=args or [],
-                queue=queue,
-                meta=meta,
-                options=request.to_dict().get("options", {}),
-            )
-            return Job(
-                id=fake_job.id,
-                type=fake_job.type,
-                state=JobState.AVAILABLE,
-                args=fake_job.args,
-                queue=fake_job.queue,
-                meta=fake_job.meta,
-            )
-
-        async def _push(req: JobRequest) -> Job | None:
-            return await self._transport.push(req.to_dict())
-
-        result = await self._enqueue_middleware.execute(request, _push)
-        if result is None:
-            raise OJSError("Enqueue middleware chain returned None unexpectedly")
-        return result
+        return await self._enqueue_pipeline.enqueue(request)
 
     async def enqueue_batch(self, requests: list[JobRequest]) -> list[Job]:
         """Enqueue multiple jobs in a single atomic operation.
@@ -215,33 +170,7 @@ class Client:
         Returns:
             List of created Jobs.
         """
-        from ojs.testing import get_store
-
-        store = get_store()
-        if store is not None:
-            jobs: list[Job] = []
-            for req in requests:
-                fake_job = store.record_enqueue(
-                    job_type=req.type,
-                    args=req.args,
-                    queue=req.queue,
-                    meta=req.meta,
-                    options=req.to_dict().get("options", {}),
-                )
-                jobs.append(
-                    Job(
-                        id=fake_job.id,
-                        type=fake_job.type,
-                        state=JobState.AVAILABLE,
-                        args=fake_job.args,
-                        queue=fake_job.queue,
-                        meta=fake_job.meta or {},
-                    )
-                )
-            return jobs
-
-        bodies = [r.to_dict() for r in requests]
-        return await self._transport.push_batch(bodies)
+        return await self._enqueue_pipeline.enqueue_batch(requests)
 
     async def get_job(self, job_id: str) -> Job:
         """Get job details by ID.
@@ -264,6 +193,30 @@ class Client:
             The Job in cancelled state.
         """
         return await self._transport.cancel(job_id)
+
+    async def fetch(
+        self,
+        queues: list[str],
+        *,
+        count: int = 1,
+        worker_id: str | None = None,
+        visibility_timeout_ms: int = 30000,
+    ) -> list[Job]:
+        """Fetch jobs using the normative OJS worker operation."""
+        return await self._transport.fetch(
+            queues,
+            count=count,
+            worker_id=worker_id,
+            visibility_timeout_ms=visibility_timeout_ms,
+        )
+
+    async def ack(self, job_id: str, result: Any = None) -> dict[str, Any]:
+        """Acknowledge successful job completion."""
+        return await self._transport.ack(job_id, result=result)
+
+    async def nack(self, job_id: str, error: dict[str, Any]) -> dict[str, Any]:
+        """Report a structured job failure."""
+        return await self._transport.nack(job_id, error)
 
     # --- Queue Operations ---
 
@@ -392,7 +345,7 @@ class Client:
 
         Args:
             name: Unique cron job name.
-            cron: Cron expression (e.g., "*/5 * * * *").
+            cron: Cron expression (e.g., ``*/5 * * * *``).
             job_type: Job type to enqueue on each tick.
             args: Arguments for the job. Default: [].
             timezone: IANA timezone (e.g., "America/New_York").
@@ -537,61 +490,85 @@ class SyncClient:
         timeout: float = 30.0,
         headers: dict[str, str] | None = None,
         retry_config: RetryConfig | None = None,
+        transport: Transport | None = None,
     ) -> None:
-        self._client = Client(url, timeout=timeout, headers=headers, retry_config=retry_config)
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._loop_lock = threading.Lock()
-
-    def _get_loop(self) -> asyncio.AbstractEventLoop:
-        with self._loop_lock:
-            if self._loop is None or self._loop.is_closed():
-                self._loop = asyncio.new_event_loop()
-            return self._loop
+        self._client = Client(
+            url,
+            timeout=timeout,
+            headers=headers,
+            retry_config=retry_config,
+            transport=transport,
+        )
+        self._runner = SyncRunner()
+        self._closed = False
 
     def enqueue(self, job_type: str, args: list[Any] | None = None, **kwargs: Any) -> Job:
-        return self._get_loop().run_until_complete(self._client.enqueue(job_type, args, **kwargs))
+        return self._runner.run(self._client.enqueue(job_type, args, **kwargs))
 
     def enqueue_batch(self, requests: list[JobRequest]) -> list[Job]:
-        return self._get_loop().run_until_complete(self._client.enqueue_batch(requests))
+        return self._runner.run(self._client.enqueue_batch(requests))
 
     def get_job(self, job_id: str) -> Job:
-        return self._get_loop().run_until_complete(self._client.get_job(job_id))
+        return self._runner.run(self._client.get_job(job_id))
 
     def cancel_job(self, job_id: str) -> Job:
-        return self._get_loop().run_until_complete(self._client.cancel_job(job_id))
+        return self._runner.run(self._client.cancel_job(job_id))
+
+    def fetch(
+        self,
+        queues: list[str],
+        *,
+        count: int = 1,
+        worker_id: str | None = None,
+        visibility_timeout_ms: int = 30000,
+    ) -> list[Job]:
+        return self._runner.run(
+            self._client.fetch(
+                queues,
+                count=count,
+                worker_id=worker_id,
+                visibility_timeout_ms=visibility_timeout_ms,
+            )
+        )
+
+    def ack(self, job_id: str, result: Any = None) -> dict[str, Any]:
+        return self._runner.run(self._client.ack(job_id, result=result))
+
+    def nack(self, job_id: str, error: dict[str, Any]) -> dict[str, Any]:
+        return self._runner.run(self._client.nack(job_id, error))
 
     def health(self) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(self._client.health())
+        return self._runner.run(self._client.health())
 
     # --- Queue Operations ---
 
     def list_queues(self) -> list[Queue]:
-        return self._get_loop().run_until_complete(self._client.list_queues())
+        return self._runner.run(self._client.list_queues())
 
     def queue_stats(self, queue_name: str) -> QueueStats:
-        return self._get_loop().run_until_complete(self._client.queue_stats(queue_name))
+        return self._runner.run(self._client.queue_stats(queue_name))
 
     def pause_queue(self, queue_name: str) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(self._client.pause_queue(queue_name))
+        return self._runner.run(self._client.pause_queue(queue_name))
 
     def resume_queue(self, queue_name: str) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(self._client.resume_queue(queue_name))
+        return self._runner.run(self._client.resume_queue(queue_name))
 
     # --- Workflow Operations ---
 
     def workflow(self, definition: WorkflowDefinition) -> Workflow:
-        return self._get_loop().run_until_complete(self._client.workflow(definition))
+        return self._runner.run(self._client.workflow(definition))
 
     def get_workflow(self, workflow_id: str) -> Workflow:
-        return self._get_loop().run_until_complete(self._client.get_workflow(workflow_id))
+        return self._runner.run(self._client.get_workflow(workflow_id))
 
     def cancel_workflow(self, workflow_id: str) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(self._client.cancel_workflow(workflow_id))
+        return self._runner.run(self._client.cancel_workflow(workflow_id))
 
     # --- Manifest ---
 
     def manifest(self) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(self._client.manifest())
+        return self._runner.run(self._client.manifest())
 
     # --- Dead Letter Operations ---
 
@@ -601,59 +578,54 @@ class SyncClient:
         limit: int = 50,
         offset: int = 0,
     ) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(
+        return self._runner.run(
             self._client.list_dead_letter_jobs(queue=queue, limit=limit, offset=offset)
         )
 
     def retry_dead_letter_job(self, job_id: str) -> Job:
-        return self._get_loop().run_until_complete(self._client.retry_dead_letter_job(job_id))
+        return self._runner.run(self._client.retry_dead_letter_job(job_id))
 
     def delete_dead_letter_job(self, job_id: str) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(self._client.delete_dead_letter_job(job_id))
+        return self._runner.run(self._client.delete_dead_letter_job(job_id))
 
     # --- Cron Operations ---
 
     def list_cron_jobs(self, limit: int = 50, offset: int = 0) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(
-            self._client.list_cron_jobs(limit=limit, offset=offset)
-        )
+        return self._runner.run(self._client.list_cron_jobs(limit=limit, offset=offset))
 
     def register_cron_job(
         self, name: str, cron: str, job_type: str, args: list[Any] | None = None, **kwargs: Any
     ) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(
+        return self._runner.run(
             self._client.register_cron_job(name, cron, job_type, args, **kwargs)
         )
 
     def unregister_cron_job(self, name: str) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(self._client.unregister_cron_job(name))
+        return self._runner.run(self._client.unregister_cron_job(name))
 
     # --- Schema Operations ---
 
     def list_schemas(self, limit: int = 50, offset: int = 0) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(
-            self._client.list_schemas(limit=limit, offset=offset)
-        )
+        return self._runner.run(self._client.list_schemas(limit=limit, offset=offset))
 
     def register_schema(
         self, uri: str, job_type: str, version: str, schema: dict[str, Any]
     ) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(
-            self._client.register_schema(uri, job_type, version, schema)
-        )
+        return self._runner.run(self._client.register_schema(uri, job_type, version, schema))
 
     def get_schema(self, uri: str) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(self._client.get_schema(uri))
+        return self._runner.run(self._client.get_schema(uri))
 
     def delete_schema(self, uri: str) -> dict[str, Any]:
-        return self._get_loop().run_until_complete(self._client.delete_schema(uri))
+        return self._runner.run(self._client.delete_schema(uri))
 
     # --- Lifecycle ---
 
     def close(self) -> None:
-        if self._loop and not self._loop.is_closed():
-            self._loop.run_until_complete(self._client.close())
-            self._loop.close()
+        if self._closed:
+            return
+        self._closed = True
+        self._runner.close(self._client.close())
 
     def __enter__(self) -> SyncClient:
         return self

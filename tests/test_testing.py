@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
+
 import pytest
 
 import ojs
+import ojs.client.async_client
 from ojs.testing import (
     all_enqueued,
     assert_completed,
@@ -17,6 +21,7 @@ from ojs.testing import (
     is_fake_mode,
     refute_enqueued,
 )
+from ojs.transport.fake import FakeTransport
 
 
 class TestFakeMode:
@@ -31,8 +36,26 @@ class TestFakeMode:
             assert store is not None
             assert store.enqueued == []
 
+    def test_nested_fake_mode_restores_outer_store(self) -> None:
+        with fake_mode() as outer:
+            outer.record_enqueue("outer.job", [])
+            with fake_mode() as inner:
+                inner.record_enqueue("inner.job", [])
+                assert [job.type for job in all_enqueued()] == ["inner.job"]
+            assert [job.type for job in all_enqueued()] == ["outer.job"]
+
 
 class TestFakeModeClientIntegration:
+    async def test_existing_implicit_client_observes_active_fake_mode(self) -> None:
+        client = ojs.Client("http://unused")
+        try:
+            with fake_mode():
+                job = await client.enqueue("email.send", ["created-before-mode"])
+                assert job.id.startswith("fake-")
+                assert_enqueued("email.send", args=["created-before-mode"])
+        finally:
+            await client.close()
+
     async def test_enqueue_records_in_fake_mode(self) -> None:
         with fake_mode():
             async with ojs.Client("http://fake:8080") as client:
@@ -92,6 +115,28 @@ class TestFakeModeClientIntegration:
             assert_enqueued("email.send", args=["user@example.com"])
             with pytest.raises(AssertionError):
                 assert_enqueued("email.send", args=["wrong@example.com"])
+
+    async def test_parallel_explicit_fake_transports_are_isolated(self) -> None:
+        first = FakeTransport()
+        second = FakeTransport()
+
+        async def enqueue(transport: FakeTransport, address: str) -> None:
+            client = ojs.Client("http://unused", transport=transport)
+            await client.enqueue("email.send", [address])
+
+        await asyncio.gather(
+            enqueue(first, "first@example.com"),
+            enqueue(second, "second@example.com"),
+        )
+
+        assert first.store.enqueued[0].args == ["first@example.com"]
+        assert second.store.enqueued[0].args == ["second@example.com"]
+        assert_enqueued("email.send", transport=first)
+        assert_enqueued("email.send", transport=second)
+
+    def test_client_does_not_import_testing_module(self) -> None:
+        source = inspect.getsource(ojs.client.async_client)
+        assert "ojs.testing" not in source
 
 
 class TestAssertionErrors:
