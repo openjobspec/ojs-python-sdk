@@ -6,18 +6,22 @@ Implements the OJS HTTP/REST Protocol Binding (Layer 3).
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
-import uuid
 from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 from ojs.errors import OJSConnectionError, OJSTimeoutError, raise_for_error
+from ojs.errors.rate_limit_headers import parse_retry_after
 from ojs.job import Job
 from ojs.queue import Queue, QueueStats
 from ojs.transport.base import Transport
+from ojs.transport.http.enqueue_idempotency import (
+    effective_idempotency_key,
+    request_headers,
+)
+from ojs.transport.http.retry_policy import classify_operation, retry_reason
 from ojs.transport.rate_limiter import RetryConfig, sleep_before_retry
 from ojs.workflow import Workflow, WorkflowDefinition
 
@@ -83,7 +87,13 @@ class HTTPTransport(Transport):
 
         Automatically retries on 429 responses when rate-limit retry is enabled.
         """
-        return await self._do_request(method, self._url(path), json=json, params=params)
+        return await self._do_request(
+            method,
+            self._url(path),
+            json=json,
+            params=params,
+            idempotency_key=effective_idempotency_key(self._client.headers, json),
+        )
 
     async def _raw_request(
         self,
@@ -94,7 +104,13 @@ class HTTPTransport(Transport):
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Make an HTTP request with a raw path (no base-path prefix)."""
-        return await self._do_request(method, raw_path, json=json, params=params)
+        return await self._do_request(
+            method,
+            raw_path,
+            json=json,
+            params=params,
+            idempotency_key=effective_idempotency_key(self._client.headers, json),
+        )
 
     async def _do_request(
         self,
@@ -103,16 +119,21 @@ class HTTPTransport(Transport):
         *,
         json: Any = None,
         params: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        """Execute an HTTP request with optional 429 retry logic."""
+        """Execute an HTTP request with operation-aware retry logic."""
         cfg = self._retry_config
-        max_attempts = (1 + cfg.max_retries) if cfg.enabled else 1
+        safety = classify_operation(method, idempotency_key=idempotency_key)
+        attempt = 0
 
-        for attempt in range(max_attempts):
+        while True:
             try:
                 response = await self._client.request(
-                    method, url, json=json, params=params,
-                    headers={"X-Request-ID": str(uuid.uuid4())},
+                    method,
+                    url,
+                    json=json,
+                    params=params,
+                    headers=request_headers(idempotency_key),
                 )
             except httpx.ConnectError as e:
                 raise OJSConnectionError(
@@ -125,24 +146,37 @@ class HTTPTransport(Transport):
                     f"Communication error with OJS server at {self._base_url}: {e}"
                 ) from e
 
-            if response.status_code == 429 and cfg.enabled and attempt < cfg.max_retries:
-                retry_after: float | None = None
-                raw = response.headers.get("retry-after")
-                if raw is not None:
-                    with contextlib.suppress(ValueError):
-                        retry_after = float(raw)
-                await sleep_before_retry(attempt, retry_after, cfg)
-                continue
-
-            if response.status_code in (502, 503, 504) and cfg.retry_server_errors and cfg.enabled and attempt < cfg.max_retries:
-                await sleep_before_retry(attempt, None, cfg)
+            reason = retry_reason(
+                response.status_code,
+                attempt=attempt,
+                safety=safety,
+                config=cfg,
+            )
+            if reason is not None:
+                retry_after = (
+                    parse_retry_after(response.headers.get("retry-after"))
+                    if response.status_code == 429
+                    else None
+                )
+                await sleep_before_retry(
+                    attempt,
+                    retry_after,
+                    cfg,
+                    reason=reason.value,
+                )
+                attempt += 1
                 continue
 
             if response.status_code >= 400:
                 try:
                     body = response.json()
                 except ValueError:
-                    body = {"error": {"message": response.text or "Unknown error", "code": "parse_error"}}
+                    body = {
+                        "error": {
+                            "message": response.text or "Unknown error",
+                            "code": "parse_error",
+                        }
+                    }
                 headers = dict(response.headers)
                 raise_for_error(response.status_code, body, headers)
 
@@ -158,16 +192,9 @@ class HTTPTransport(Transport):
                 result: dict[str, Any] = response.json()
             except ValueError as e:
                 raise OJSConnectionError(
-                    f"Invalid JSON response from OJS server "
-                    f"(Content-Type: {content_type}): {e}"
+                    f"Invalid JSON response from OJS server (Content-Type: {content_type}): {e}"
                 ) from e
             return result
-
-        # All retry attempts exhausted on 429 — raise the last response as error.
-        # This path is reached when the for loop completes without returning.
-        raise OJSConnectionError(
-            f"Request to OJS server failed after {max_attempts} attempts"
-        )
 
     # --- Job Operations ---
 
@@ -337,7 +364,7 @@ class HTTPTransport(Transport):
             self._closed = True
             try:
                 await asyncio.wait_for(self._client.aclose(), timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("HTTP client close timed out after 5s")
 
     # --- Generic Request (used by durable execution) ---

@@ -493,7 +493,9 @@ class TestGenericRequest:
         result = await transport.request("GET", "/checkpoints/job-1/resume")
         assert result == {"has_checkpoint": False}
 
-    async def test_request_post_with_body(self, httpx_mock: HTTPXMock, transport: HTTPTransport) -> None:
+    async def test_request_post_with_body(
+        self, httpx_mock: HTTPXMock, transport: HTTPTransport
+    ) -> None:
         httpx_mock.add_response(
             url=f"{BASE_URL}{_OJS_BASE_PATH}/checkpoints/job-1",
             method="POST",
