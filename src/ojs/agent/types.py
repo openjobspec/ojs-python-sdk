@@ -7,12 +7,12 @@ specified in spec/spec/ojs-ai-agents-v2.md.
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any
 
 
-class MergeStrategy(str, Enum):
+class MergeStrategy(str, enum.Enum):  # noqa: UP042 - public base-class compatibility
     """Strategy for merging two conversation branches."""
 
     OURS = "ours"
@@ -20,7 +20,7 @@ class MergeStrategy(str, Enum):
     UNION = "union"
 
 
-class AgentState(str, Enum):
+class AgentState(str, enum.Enum):  # noqa: UP042 - public base-class compatibility
     """Agent execution lifecycle states."""
 
     RUNNING = "running"
