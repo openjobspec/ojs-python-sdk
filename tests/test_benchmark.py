@@ -4,9 +4,12 @@ Run with: pytest tests/test_benchmark.py -v
 """
 
 import json
+import logging
 import time
 
 from ojs.job import Job, JobRequest, JobState
+
+logger = logging.getLogger(__name__)
 
 MINIMAL_JOB_DICT = {
     "id": "019539a4-b68c-7def-8000-1a2b3c4d5e6f",
@@ -44,7 +47,11 @@ class TestJobDeserialization:
             Job.from_dict(MINIMAL_JOB_DICT)
         elapsed = time.perf_counter() - start
         per_op = elapsed / iterations * 1_000_000  # microseconds
-        print(f"\n  Job.from_dict (minimal): {per_op:.2f} µs/op ({iterations} iterations)")
+        logger.info(
+            "\n  Job.from_dict (minimal): %.2f µs/op (%d iterations)",
+            per_op,
+            iterations,
+        )
         assert per_op < 1000, f"Too slow: {per_op:.2f} µs/op"
 
     def test_bench_from_dict_full(self) -> None:
@@ -54,7 +61,11 @@ class TestJobDeserialization:
             Job.from_dict(FULL_JOB_DICT)
         elapsed = time.perf_counter() - start
         per_op = elapsed / iterations * 1_000_000
-        print(f"\n  Job.from_dict (full): {per_op:.2f} µs/op ({iterations} iterations)")
+        logger.info(
+            "\n  Job.from_dict (full): %.2f µs/op (%d iterations)",
+            per_op,
+            iterations,
+        )
         assert per_op < 1000, f"Too slow: {per_op:.2f} µs/op"
 
 
@@ -69,7 +80,11 @@ class TestJobRequestSerialization:
             req.to_dict()
         elapsed = time.perf_counter() - start
         per_op = elapsed / iterations * 1_000_000
-        print(f"\n  JobRequest.to_dict (minimal): {per_op:.2f} µs/op ({iterations} iterations)")
+        logger.info(
+            "\n  JobRequest.to_dict (minimal): %.2f µs/op (%d iterations)",
+            per_op,
+            iterations,
+        )
         assert per_op < 1000, f"Too slow: {per_op:.2f} µs/op"
 
     def test_bench_to_dict_full(self) -> None:
@@ -86,7 +101,11 @@ class TestJobRequestSerialization:
             req.to_dict()
         elapsed = time.perf_counter() - start
         per_op = elapsed / iterations * 1_000_000
-        print(f"\n  JobRequest.to_dict (full): {per_op:.2f} µs/op ({iterations} iterations)")
+        logger.info(
+            "\n  JobRequest.to_dict (full): %.2f µs/op (%d iterations)",
+            per_op,
+            iterations,
+        )
         assert per_op < 1000, f"Too slow: {per_op:.2f} µs/op"
 
 
@@ -100,7 +119,11 @@ class TestJsonSerialization:
             json.dumps(MINIMAL_JOB_DICT)
         elapsed = time.perf_counter() - start
         per_op = elapsed / iterations * 1_000_000
-        print(f"\n  json.dumps (minimal): {per_op:.2f} µs/op ({iterations} iterations)")
+        logger.info(
+            "\n  json.dumps (minimal): %.2f µs/op (%d iterations)",
+            per_op,
+            iterations,
+        )
 
     def test_bench_json_dumps_full(self) -> None:
         iterations = 10_000
@@ -109,7 +132,11 @@ class TestJsonSerialization:
             json.dumps(FULL_JOB_DICT)
         elapsed = time.perf_counter() - start
         per_op = elapsed / iterations * 1_000_000
-        print(f"\n  json.dumps (full): {per_op:.2f} µs/op ({iterations} iterations)")
+        logger.info(
+            "\n  json.dumps (full): %.2f µs/op (%d iterations)",
+            per_op,
+            iterations,
+        )
 
     def test_bench_json_loads_minimal(self) -> None:
         data = json.dumps(MINIMAL_JOB_DICT)
@@ -119,7 +146,11 @@ class TestJsonSerialization:
             json.loads(data)
         elapsed = time.perf_counter() - start
         per_op = elapsed / iterations * 1_000_000
-        print(f"\n  json.loads (minimal): {per_op:.2f} µs/op ({iterations} iterations)")
+        logger.info(
+            "\n  json.loads (minimal): %.2f µs/op (%d iterations)",
+            per_op,
+            iterations,
+        )
 
     def test_bench_json_loads_full(self) -> None:
         data = json.dumps(FULL_JOB_DICT)
@@ -129,7 +160,11 @@ class TestJsonSerialization:
             json.loads(data)
         elapsed = time.perf_counter() - start
         per_op = elapsed / iterations * 1_000_000
-        print(f"\n  json.loads (full): {per_op:.2f} µs/op ({iterations} iterations)")
+        logger.info(
+            "\n  json.loads (full): %.2f µs/op (%d iterations)",
+            per_op,
+            iterations,
+        )
 
 
 class TestJobStateOperations:
@@ -145,4 +180,8 @@ class TestJobStateOperations:
         elapsed = time.perf_counter() - start
         per_op = elapsed / (iterations * len(states)) * 1_000_000
         total = iterations * len(states)
-        print(f"\n  JobState.is_terminal: {per_op:.2f} µs/op ({total} iterations)")
+        logger.info(
+            "\n  JobState.is_terminal: %.2f µs/op (%d iterations)",
+            per_op,
+            total,
+        )

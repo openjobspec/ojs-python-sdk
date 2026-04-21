@@ -111,6 +111,7 @@ exclude_lines = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+extend-exclude = ["src/ojs/_generated"]
 
 [tool.ruff.lint]
 select = [
@@ -131,8 +132,18 @@ select = [
   "S",     # flake8-bandit (security)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "ojs._generated.*"
+ignore_errors = true
+
+[tool.bandit]
+exclude_dirs = ["src/ojs/_generated", "tests"]

@@ -7,15 +7,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import suppress
 from typing import Any
-
-import pytest
 
 from ojs.errors import OJSErrorDetail, raise_for_error
 from ojs.job import Job, JobContext, JobRequest, JobState, UniquePolicy
 from ojs.middleware import ExecutionMiddlewareChain
 from ojs.retry import RetryPolicy
-
 
 # ---------------------------------------------------------------------------
 # Fixture data
@@ -275,10 +273,8 @@ class TestErrorParsing:
 
     def test_raise_for_error_validation(self, benchmark: Any) -> None:
         def parse_error() -> None:
-            try:
+            with suppress(Exception):
                 raise_for_error(422, ERROR_RESPONSE_DICT)
-            except Exception:
-                pass
 
         benchmark(parse_error)
 
@@ -292,10 +288,8 @@ class TestErrorParsing:
         }
 
         def parse_error() -> None:
-            try:
+            with suppress(Exception):
                 raise_for_error(404, body)
-            except Exception:
-                pass
 
         benchmark(parse_error)
 
@@ -309,10 +303,8 @@ class TestErrorParsing:
         }
 
         def parse_error() -> None:
-            try:
+            with suppress(Exception):
                 raise_for_error(409, body)
-            except Exception:
-                pass
 
         benchmark(parse_error)
 
@@ -501,8 +493,7 @@ class TestClientRequestBuilding:
     def test_build_batch_enqueue_request(self, benchmark: Any) -> None:
         def build() -> list[dict[str, Any]]:
             requests = [
-                JobRequest(type="email.send", args=[f"user{i}@example.com"])
-                for i in range(10)
+                JobRequest(type="email.send", args=[f"user{i}@example.com"]) for i in range(10)
             ]
             return [r.to_dict() for r in requests]
 
