@@ -20,11 +20,11 @@ Usage::
 
     # Client side
     client = ojs.Client("http://localhost:8080")
-    client.add_middleware(encryption_middleware(codec))
+    client.enqueue_middleware(encryption_middleware(codec))
 
     # Worker side
     worker = ojs.Worker("http://localhost:8080", queues=["default"])
-    worker.add_middleware(decryption_middleware(codec))
+    worker.middleware(decryption_middleware(codec))
 """
 
 from __future__ import annotations
@@ -33,9 +33,7 @@ import base64
 import json
 import os
 from abc import ABC, abstractmethod
-from typing import Any
-
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from typing import Any, Protocol
 
 from ojs.job import Job, JobContext, JobRequest
 from ojs.middleware import EnqueueMiddleware, EnqueueNext, ExecutionMiddleware, ExecutionNext
@@ -53,6 +51,33 @@ _LEGACY_META_KEY_ID = "ojs_key_id"
 _LEGACY_META_NONCE = "ojs_nonce"
 _NONCE_BYTES = 12
 _KEY_BYTES = 32
+
+
+class _AeadCipher(Protocol):
+    def encrypt(
+        self,
+        nonce: bytes,
+        data: bytes,
+        associated_data: bytes | None,
+    ) -> bytes: ...
+
+    def decrypt(
+        self,
+        nonce: bytes,
+        data: bytes,
+        associated_data: bytes | None,
+    ) -> bytes: ...
+
+
+def _create_aesgcm(key: bytes) -> _AeadCipher:
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    except ImportError as exc:
+        raise ImportError(
+            "Encryption support requires the optional 'crypto' extra. "
+            "Install it with: pip install 'openjobspec[crypto]'"
+        ) from exc
+    return AESGCM(key)
 
 
 class KeyProvider(ABC):
@@ -124,6 +149,8 @@ class EncryptionCodec:
     """
 
     def __init__(self, key_provider: KeyProvider) -> None:
+        key_id = key_provider.current_key_id()
+        _create_aesgcm(key_provider.get_key(key_id))
         self._provider = key_provider
 
     def encrypt(self, plaintext: bytes) -> tuple[bytes, bytes, str]:
@@ -138,7 +165,7 @@ class EncryptionCodec:
         key_id = self._provider.current_key_id()
         key = self._provider.get_key(key_id)
         nonce = os.urandom(_NONCE_BYTES)
-        ciphertext = AESGCM(key).encrypt(nonce, plaintext, None)
+        ciphertext = _create_aesgcm(key).encrypt(nonce, plaintext, None)
         return ciphertext, nonce, key_id
 
     def decrypt(self, ciphertext: bytes, nonce: bytes, key_id: str) -> bytes:
@@ -158,7 +185,7 @@ class EncryptionCodec:
                 (wrong key, tampered data, etc.).
         """
         key = self._provider.get_key(key_id)
-        return AESGCM(key).decrypt(nonce, ciphertext, None)
+        return _create_aesgcm(key).decrypt(nonce, ciphertext, None)
 
 
 def encryption_middleware(codec: EncryptionCodec) -> EnqueueMiddleware:

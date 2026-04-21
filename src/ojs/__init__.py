@@ -22,20 +22,31 @@ Usage::
     await worker.start()
 """
 
+from __future__ import annotations
+
+from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version
+from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+from ojs._exports import LAZY_ATTRIBUTES, LAZY_MODULES
+from ojs._version import __version__ as _source_version
 from ojs.client import Client, SyncClient
-from ojs.error_codes import ErrorCodeEntry
-from ojs.error_codes import lookup_by_canonical_code, lookup_by_code
+from ojs.durable import DurableContext
+from ojs.error_codes import ErrorCodeEntry, lookup_by_canonical_code, lookup_by_code
 from ojs.errors import (
     DuplicateJobError,
+    JobExecutionTimeout,
     JobNotFoundError,
     OJSAPIError,
+    OJSCapabilityError,
     OJSConnectionError,
     OJSError,
     OJSTimeoutError,
     OJSValidationError,
     QueuePausedError,
-    RateLimitInfo,
     RateLimitedError,
+    RateLimitInfo,
 )
 from ojs.events import Event, EventType
 from ojs.job import Job, JobContext, JobRequest, JobState, UniquePolicy
@@ -56,85 +67,95 @@ from ojs.workflow import (
     chain,
     group,
 )
-from ojs.durable import DurableContext
-from ojs.encryption import (
-    EncryptionCodec,
-    StaticKeyProvider,
-    encryption_middleware,
-    decryption_middleware,
-)
 
-__version__ = "0.1.0"
+if TYPE_CHECKING:
+    from ojs import agent, attest, ml, otel, recorder, serverless, subscribe
+    from ojs.encryption import (
+        EncryptionCodec,
+        StaticKeyProvider,
+        decryption_middleware,
+        encryption_middleware,
+    )
+
+try:
+    __version__ = version("openjobspec")
+except PackageNotFoundError:
+    __version__ = _source_version
+
 __ojs_specversion__ = "1.0"
 
 __all__ = [
-    # Client
     "Client",
-    "SyncClient",
-    # Worker
-    "Worker",
-    "WorkerState",
-    # Core types
+    "DuplicateJobError",
+    "DurableContext",
+    "EncryptionCodec",
+    "EnqueueMiddleware",
+    "ErrorCodeEntry",
+    "Event",
+    "EventType",
+    "ExecutionMiddleware",
     "Job",
     "JobContext",
+    "JobExecutionTimeout",
+    "JobNotFoundError",
     "JobRequest",
     "JobState",
-    "RetryPolicy",
-    "UniquePolicy",
-    # Queue
+    "OJSAPIError",
+    "OJSCapabilityError",
+    "OJSConnectionError",
+    "OJSError",
+    "OJSTimeoutError",
+    "OJSValidationError",
     "Queue",
+    "QueuePausedError",
     "QueueStats",
-    # Workflow
+    "RateLimitInfo",
+    "RateLimitedError",
+    "RetryConfig",
+    "RetryPolicy",
+    "StaticKeyProvider",
+    "SyncClient",
+    "UniquePolicy",
+    "Worker",
+    "WorkerState",
     "Workflow",
     "WorkflowDefinition",
     "WorkflowStep",
-    "chain",
-    "group",
+    "__ojs_specversion__",
+    "__version__",
+    "agent",
+    "attest",
     "batch",
-    # Events
-    "Event",
-    "EventType",
-    # Middleware
-    "EnqueueMiddleware",
-    "ExecutionMiddleware",
-    # Errors
-    "OJSError",
-    "OJSAPIError",
-    "OJSConnectionError",
-    "OJSTimeoutError",
-    "OJSValidationError",
-    "DuplicateJobError",
-    "JobNotFoundError",
-    "QueuePausedError",
-    "RateLimitedError",
-    # Rate Limiting
-    "RetryConfig",
-    # Progress
-    "report_progress",
-    # Durable execution
-    "DurableContext",
-    # Encryption
-    "EncryptionCodec",
-    "StaticKeyProvider",
-    "encryption_middleware",
+    "chain",
     "decryption_middleware",
-    # ML/AI Resource Extension (available via ojs.ml)
-    # Serverless adapters (available via ojs.serverless)
-    # Agent Substrate Protocol (available via ojs.agent)
-    # Attestation (available via ojs.attest)
-    # Recorder (available via ojs.recorder)
+    "encryption_middleware",
+    "group",
+    "lookup_by_canonical_code",
+    "lookup_by_code",
+    "ml",
+    "otel",
+    "recorder",
+    "report_progress",
+    "serverless",
+    "subscribe",
 ]
 
-# Lazy imports for moonshot submodules — avoid import-time overhead
-# for users who don't need them. Use: `from ojs.agent import AgentClient`
-def __getattr__(name: str):
-    if name == "agent":
-        from ojs import agent as _agent
-        return _agent
-    if name == "attest":
-        from ojs import attest as _attest
-        return _attest
-    if name == "recorder":
-        from ojs import recorder as _recorder
-        return _recorder
+
+def __getattr__(name: str) -> object | ModuleType:
+    module_name = LAZY_MODULES.get(name)
+    if module_name is not None:
+        module = import_module(module_name)
+        globals()[name] = module
+        return module
+
+    target = LAZY_ATTRIBUTES.get(name)
+    if target is not None:
+        attribute_module, attribute_name = target
+        value = getattr(import_module(attribute_module), attribute_name)
+        globals()[name] = value
+        return cast(object, value)
     raise AttributeError(f"module 'ojs' has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
