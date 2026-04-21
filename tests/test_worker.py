@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+from math import inf, nan
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 import ojs
+from ojs.errors import OJSCapabilityError, OJSConnectionError
 from ojs.job import Job, JobContext, JobState
+from ojs.worker.completion_reporter import Completed, CompletionReporter, Failed
 from tests.conftest import FakeTransport
 
 
@@ -37,13 +45,79 @@ class TestWorkerRegistration:
         worker = ojs.Worker("http://localhost:8080", transport=transport)
 
         @worker.middleware
-        async def mw(ctx, next):
-            return await next()
+        async def mw(ctx, next_fn):
+            return await next_fn()
 
         assert len(worker._execution_middleware._middlewares) == 1
 
 
+class TestWorkerOptionValidation:
+    @pytest.mark.parametrize(
+        ("option", "value", "message"),
+        [
+            ("concurrency", 0, "concurrency"),
+            ("concurrency", -1, "concurrency"),
+            ("concurrency", True, "concurrency"),
+            ("poll_interval", 0, "poll_interval"),
+            ("poll_interval", nan, "poll_interval"),
+            ("heartbeat_interval", -1, "heartbeat_interval"),
+            ("heartbeat_interval", inf, "heartbeat_interval"),
+            ("visibility_timeout_ms", 0, "visibility_timeout_ms"),
+            ("visibility_timeout_ms", True, "visibility_timeout_ms"),
+            ("visibility_timeout", 0, "visibility_timeout"),
+            ("visibility_timeout", 0.0001, "at least 1 millisecond"),
+            ("timeout", 0, "timeout"),
+            ("grace_period", -1, "grace_period"),
+        ],
+    )
+    def test_rejects_invalid_options(
+        self,
+        option: str,
+        value: object,
+        message: str,
+    ) -> None:
+        with pytest.raises(ValueError, match=message):
+            ojs.Worker(
+                "http://localhost:8080",
+                transport=FakeTransport(),
+                **{option: value},
+            )
+
+    def test_rejects_both_visibility_timeout_forms(self) -> None:
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            ojs.Worker(
+                "http://localhost:8080",
+                transport=FakeTransport(),
+                visibility_timeout=30,
+                visibility_timeout_ms=30000,
+            )
+
+    def test_converts_visibility_timeout_seconds(self) -> None:
+        worker = ojs.Worker(
+            "http://localhost:8080",
+            transport=FakeTransport(),
+            visibility_timeout=1.5,
+            grace_period=0,
+        )
+
+        assert worker._visibility_timeout_ms == 1500
+
+
 class TestWorkerProcessJob:
+    async def test_handler_attempt_is_one_indexed(self) -> None:
+        transport = FakeTransport()
+        worker = ojs.Worker("http://localhost:8080", transport=transport)
+        observed_attempts: list[int] = []
+
+        @worker.register("test.echo")
+        async def handler(ctx: ojs.JobContext) -> str:
+            observed_attempts.append(ctx.attempt)
+            return "ok"
+
+        await worker._process_job(Job(id="job-attempt", type="test.echo", state=JobState.ACTIVE))
+
+        assert observed_attempts == [1]
+
     async def test_process_job_acks_on_success(self) -> None:
         transport = FakeTransport()
         worker = ojs.Worker("http://localhost:8080", transport=transport)
@@ -90,10 +164,10 @@ class TestWorkerProcessJob:
         mw_ran = False
 
         @worker.middleware
-        async def my_mw(ctx, next):
+        async def my_mw(ctx, next_fn):
             nonlocal mw_ran
             mw_ran = True
-            return await next()
+            return await next_fn()
 
         @worker.register("test.echo")
         async def handler(ctx: ojs.JobContext) -> str:
@@ -104,6 +178,139 @@ class TestWorkerProcessJob:
 
         assert mw_ran
         assert len(transport.acked) == 1
+
+    async def test_handler_reports_progress_through_context(self) -> None:
+        transport = FakeTransport()
+        worker = ojs.Worker("http://localhost:8080", transport=transport)
+
+        @worker.register("test.progress")
+        async def handler(ctx: ojs.JobContext) -> str:
+            await ctx.report_progress(
+                40,
+                message="processing",
+                data={"records": 8},
+            )
+            return "done"
+
+        await worker._process_job(
+            Job(id="job-progress", type="test.progress", state=JobState.ACTIVE)
+        )
+
+        assert transport.progress_updates == [
+            {
+                "job_id": "job-progress",
+                "percentage": 40,
+                "message": "processing",
+                "data": {"records": 8},
+            }
+        ]
+        assert transport.acked[0]["result"] == "done"
+
+    async def test_ack_failure_never_sends_nack(self) -> None:
+        class FailingAckTransport(FakeTransport):
+            def __init__(self) -> None:
+                super().__init__()
+                self.ack_attempts = 0
+
+            async def ack(self, job_id: str, result: object = None) -> dict[str, object]:
+                self.ack_attempts += 1
+                raise OJSConnectionError("ack unavailable")
+
+        transport = FailingAckTransport()
+        worker = ojs.Worker("http://localhost:8080", transport=transport)
+
+        @worker.register("test.echo")
+        async def handler(ctx: ojs.JobContext) -> str:
+            return "completed"
+
+        with patch(
+            "ojs.worker.completion_reporter.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await worker._process_job(Job(id="job-ack", type="test.echo", state=JobState.ACTIVE))
+
+        assert transport.ack_attempts == 3
+        assert transport.nacked == []
+
+    async def test_lost_ack_response_retries_same_outcome(self) -> None:
+        class LostAckTransport(FakeTransport):
+            def __init__(self) -> None:
+                super().__init__()
+                self.ack_attempts = 0
+
+            async def ack(self, job_id: str, result: object = None) -> dict[str, object]:
+                self.ack_attempts += 1
+                if self.ack_attempts == 1:
+                    self.acked.append({"job_id": job_id, "result": result})
+                    raise OJSConnectionError("response lost after commit")
+                return {"acknowledged": True}
+
+        transport = LostAckTransport()
+        worker = ojs.Worker("http://localhost:8080", transport=transport)
+
+        @worker.register("test.echo")
+        async def handler(ctx: ojs.JobContext) -> str:
+            return "completed"
+
+        with patch(
+            "ojs.worker.completion_reporter.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await worker._process_job(
+                Job(id="job-lost-ack", type="test.echo", state=JobState.ACTIVE)
+            )
+
+        assert transport.ack_attempts == 2
+        assert transport.nacked == []
+
+    async def test_cancellation_racing_ack_does_not_send_nack(self) -> None:
+        class BlockingAckTransport(FakeTransport):
+            def __init__(self) -> None:
+                super().__init__()
+                self.ack_started = asyncio.Event()
+
+            async def ack(self, job_id: str, result: object = None) -> dict[str, object]:
+                self.ack_started.set()
+                await asyncio.Event().wait()
+                return {"acknowledged": True}
+
+        transport = BlockingAckTransport()
+        worker = ojs.Worker("http://localhost:8080", transport=transport)
+
+        @worker.register("test.echo")
+        async def handler(ctx: ojs.JobContext) -> str:
+            return "completed"
+
+        task = asyncio.create_task(
+            worker._process_job(Job(id="job-race", type="test.echo", state=JobState.ACTIVE))
+        )
+        await transport.ack_started.wait()
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert transport.nacked == []
+
+    async def test_only_one_terminal_outcome_wins_race(self) -> None:
+        transport = FakeTransport()
+        reporter = CompletionReporter(transport, "job-terminal")
+
+        results = await asyncio.gather(
+            reporter.report(Completed({"ok": True})),
+            reporter.report(
+                Failed(
+                    {
+                        "code": "handler_error",
+                        "message": "failed",
+                        "retryable": True,
+                    }
+                )
+            ),
+        )
+
+        assert sorted(results) == [False, True]
+        assert len(transport.acked) + len(transport.nacked) == 1
 
 
 class TestJobContext:
@@ -132,3 +339,13 @@ class TestJobContext:
         ctx.cancel()
         assert ctx.is_cancelled
 
+    async def test_progress_requires_active_worker_execution(self) -> None:
+        ctx = JobContext(
+            job=Job(id="j1", type="test", state=JobState.ACTIVE),
+        )
+
+        with pytest.raises(
+            OJSCapabilityError,
+            match="outside an active worker execution",
+        ):
+            await ctx.report_progress(10)
