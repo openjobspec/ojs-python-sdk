@@ -528,10 +528,14 @@ def _dict_to_proto_bytes(method: str, data: dict[str, Any]) -> bytes:
         message_class = db.GetPrototype(descriptor)
         message = json_format.ParseDict(data, message_class())
         return message.SerializeToString()  # type: ignore[no-any-return]
-    except Exception:
+    except Exception as exc:
         # Fallback: try simple JSON encoding
         import json
+        import logging
 
+        logging.getLogger("ojs.transport.grpc").debug(
+            "Proto serialization failed for %s, falling back to JSON: %s", method, exc,
+        )
         return json.dumps(data).encode("utf-8")
 
 
@@ -553,9 +557,13 @@ def _proto_bytes_to_dict(method: str, data: bytes) -> dict[str, Any]:
             preserving_proto_field_name=True,
         )
         return result
-    except Exception:
+    except Exception as exc:
         import json
+        import logging
 
+        logging.getLogger("ojs.transport.grpc").debug(
+            "Proto deserialization failed for %s, falling back to JSON: %s", method, exc,
+        )
         return json.loads(data.decode("utf-8"))  # type: ignore[no-any-return]
 
 

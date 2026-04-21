@@ -31,6 +31,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 import time
@@ -113,8 +114,11 @@ class DurableContext:
                         if isinstance(entries, list) and entries:
                             dc._entries = [_SideEffectEntry.from_dict(e) for e in entries]
                             dc._replaying = True
-            except Exception:
-                pass  # No checkpoint — start in record mode
+            except Exception as exc:
+                logging.getLogger("ojs.durable").debug(
+                    "No checkpoint found for job %s (starting in record mode): %s",
+                    job_id, exc,
+                )
 
         return dc
 
