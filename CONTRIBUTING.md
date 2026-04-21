@@ -90,3 +90,12 @@ src/ojs/
 ## License
 
 By contributing, you agree that your contributions will be licensed under the Apache 2.0 License.
+
+## Release automation
+
+The `Release Please` workflow requires a `RELEASE_PLEASE_TOKEN` secret backed
+by a GitHub App installation token or fine-grained personal access token with
+repository contents and pull-request write access. The token must be permitted
+to trigger workflows from the release tag so `.github/workflows/release.yml`
+builds and publishes the artifacts. Do not replace it with `GITHUB_TOKEN`,
+whose tag events do not trigger downstream workflows.
