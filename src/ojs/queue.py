@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from ojs._utils import parse_datetime
+from ojs.wire_validation import WireDecoder
 
 
 @dataclass
@@ -19,10 +19,11 @@ class Queue:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Queue:
+        decoder = WireDecoder.object(data, "queue")
         return cls(
-            name=data["name"],
-            status=data.get("status", "active"),
-            created_at=parse_datetime(data.get("created_at")),
+            name=decoder.required_string("name"),
+            status=decoder.string("status", "active") or "active",
+            created_at=decoder.datetime("created_at"),
         )
 
 
@@ -46,19 +47,23 @@ class QueueStats:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> QueueStats:
-        stats = data.get("stats", {})
+        decoder = WireDecoder.object(data, "queue_stats")
+        stats = WireDecoder.object(
+            decoder.value("stats", {}),
+            "queue_stats.stats",
+        )
         return cls(
-            queue=data["queue"],
-            status=data.get("status", "active"),
-            available=stats.get("available", 0),
-            active=stats.get("active", 0),
-            scheduled=stats.get("scheduled", 0),
-            retryable=stats.get("retryable", 0),
-            discarded=stats.get("discarded", 0),
-            completed_last_hour=stats.get("completed_last_hour", 0),
-            failed_last_hour=stats.get("failed_last_hour", 0),
-            avg_duration_ms=stats.get("avg_duration_ms", 0.0),
-            avg_wait_ms=stats.get("avg_wait_ms", 0.0),
-            throughput_per_second=stats.get("throughput_per_second", 0.0),
-            computed_at=parse_datetime(data.get("computed_at")),
+            queue=decoder.required_string("queue"),
+            status=decoder.string("status", "active") or "active",
+            available=stats.integer("available", 0) or 0,
+            active=stats.integer("active", 0) or 0,
+            scheduled=stats.integer("scheduled", 0) or 0,
+            retryable=stats.integer("retryable", 0) or 0,
+            discarded=stats.integer("discarded", 0) or 0,
+            completed_last_hour=stats.integer("completed_last_hour", 0) or 0,
+            failed_last_hour=stats.integer("failed_last_hour", 0) or 0,
+            avg_duration_ms=stats.number("avg_duration_ms"),
+            avg_wait_ms=stats.number("avg_wait_ms"),
+            throughput_per_second=stats.number("throughput_per_second"),
+            computed_at=decoder.datetime("computed_at"),
         )

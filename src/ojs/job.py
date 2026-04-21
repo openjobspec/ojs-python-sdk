@@ -6,14 +6,18 @@ Job, JobRequest, JobContext, JobState, UniquePolicy.
 
 from __future__ import annotations
 
+import asyncio
 import enum
-from collections.abc import Callable, Coroutine
+import warnings
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from inspect import Parameter, Signature
+from typing import Any, ClassVar
 
-from ojs._utils import parse_datetime
+from ojs.errors import OJSCapabilityError, OJSValidationError
 from ojs.retry import RetryPolicy
+from ojs.wire_validation import WireDecoder
 
 
 class JobState(enum.StrEnum):
@@ -61,15 +65,36 @@ class UniquePolicy:
             d["period"] = self.period
         if self.states:
             d["states"] = self.states
+        if self.args_keys is not None:
+            d["args_keys"] = list(self.args_keys)
+        if self.meta_keys is not None:
+            d["meta_keys"] = list(self.meta_keys)
         return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> UniquePolicy:
+        return cls._from_decoder(WireDecoder.object(data, "unique"))
+
+    @classmethod
+    def _from_decoder(cls, decoder: WireDecoder) -> UniquePolicy:
         return cls(
-            keys=data.get("key", ["type", "queue", "args"]),
-            period=data.get("period"),
-            states=data.get("states", ["available", "active", "scheduled"]),
-            on_conflict=data.get("on_conflict", "reject"),
+            keys=decoder.string_array("key", ["type", "queue", "args"]),
+            args_keys=(
+                decoder.string_array("args_keys")
+                if decoder.value("args_keys") is not None
+                else None
+            ),
+            meta_keys=(
+                decoder.string_array("meta_keys")
+                if decoder.value("meta_keys") is not None
+                else None
+            ),
+            period=decoder.string("period"),
+            states=decoder.string_array(
+                "states",
+                ["available", "active", "scheduled"],
+            ),
+            on_conflict=decoder.string("on_conflict", "reject") or "reject",
         )
 
 
@@ -109,36 +134,56 @@ class Job:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Job:
         """Deserialize a Job from an OJS JSON response."""
+        decoder = WireDecoder.object(data, "job")
         retry = None
-        if "retry" in data and data["retry"]:
-            retry = RetryPolicy.from_dict(data["retry"])
+        retry_data = decoder.optional_mapping("retry")
+        if retry_data:
+            try:
+                retry = RetryPolicy.from_dict(retry_data)
+            except (TypeError, ValueError) as exc:
+                raise OJSValidationError(f"invalid wire value at job.retry: {exc}") from exc
 
         unique = None
-        if "unique" in data and data["unique"]:
-            unique = UniquePolicy.from_dict(data["unique"])
+        unique_data = decoder.optional_mapping("unique")
+        if unique_data:
+            unique = UniquePolicy._from_decoder(WireDecoder.object(unique_data, "job.unique"))
+
+        state_value = decoder.string("state", "available") or "available"
+        try:
+            state = JobState(state_value)
+        except ValueError as exc:
+            raise OJSValidationError(
+                f"invalid wire value at job.state: unknown job state {state_value!r}"
+            ) from exc
+
+        raw_errors = decoder.array("errors")
+        errors = [
+            dict(WireDecoder.object(error, f"job.errors[{index}]").data)
+            for index, error in enumerate(raw_errors)
+        ]
 
         return cls(
-            id=data["id"],
-            type=data["type"],
-            state=JobState(data.get("state", "available")),
-            args=data.get("args", []),
-            queue=data.get("queue", "default"),
-            meta=data.get("meta", {}),
-            priority=data.get("priority", 0),
-            attempt=data.get("attempt", 0),
-            max_attempts=data.get("max_attempts", 3),
-            timeout_ms=data.get("timeout_ms"),
-            tags=data.get("tags", []),
+            id=decoder.required_string("id"),
+            type=decoder.required_string("type"),
+            state=state,
+            args=decoder.array("args"),
+            queue=decoder.string("queue", "default") or "default",
+            meta=decoder.mapping("meta"),
+            priority=decoder.integer("priority", 0) or 0,
+            attempt=decoder.integer("attempt", 0) or 0,
+            max_attempts=decoder.integer("max_attempts", 3) or 0,
+            timeout_ms=decoder.integer("timeout_ms"),
+            tags=decoder.string_array("tags"),
             retry=retry,
             unique=unique,
-            created_at=parse_datetime(data.get("created_at")),
-            enqueued_at=parse_datetime(data.get("enqueued_at")),
-            started_at=parse_datetime(data.get("started_at")),
-            completed_at=parse_datetime(data.get("completed_at")),
-            scheduled_at=parse_datetime(data.get("scheduled_at")),
-            expires_at=parse_datetime(data.get("expires_at")),
-            result=data.get("result"),
-            errors=data.get("errors", []),
+            created_at=decoder.datetime("created_at"),
+            enqueued_at=decoder.datetime("enqueued_at"),
+            started_at=decoder.datetime("started_at"),
+            completed_at=decoder.datetime("completed_at"),
+            scheduled_at=decoder.datetime("scheduled_at"),
+            expires_at=decoder.datetime("expires_at"),
+            result=decoder.value("result"),
+            errors=errors,
         )
 
 

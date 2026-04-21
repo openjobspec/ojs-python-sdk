@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from ojs.errors import OJSValidationError
+from ojs.wire_validation import WireDecoder
+
 
 @dataclass
 class Event:
@@ -39,12 +42,14 @@ class Event:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Event:
-        ts = data.get("timestamp", "")
-        timestamp = datetime.fromisoformat(ts.replace("Z", "+00:00")) if isinstance(ts, str) else ts
+        decoder = WireDecoder.object(data, "event")
+        timestamp = decoder.datetime("timestamp", required=True)
+        if timestamp is None:
+            raise OJSValidationError("invalid wire value at event.timestamp: field is required")
         return cls(
-            event=data["event"],
+            event=decoder.required_string("event"),
             timestamp=timestamp,
-            data=data.get("data", {}),
+            data=decoder.mapping("data"),
         )
 
 
@@ -81,4 +86,4 @@ class EventType:
 
 
 # Event handler type
-EventHandler = Any  # Callable[[Event], Coroutine[Any, Any, None]]
+EventHandler = Any
