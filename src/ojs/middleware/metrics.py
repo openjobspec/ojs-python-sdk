@@ -14,16 +14,20 @@ Usage::
             self, job_type: str, queue: str, duration_s: float, error: Exception
         ) -> None: ...
 
-    worker.add_middleware(metrics_middleware(MyRecorder()))
+    worker.middleware(metrics_middleware(MyRecorder()))
 """
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable, Coroutine
+from functools import partial
 from typing import Any, Protocol, runtime_checkable
 
 from ojs.job import JobContext
+
+logger = logging.getLogger("ojs.middleware.metrics")
 
 
 @runtime_checkable
@@ -49,11 +53,15 @@ class MetricsRecorder(Protocol):
 
 def metrics_middleware(
     recorder: MetricsRecorder,
+    *,
+    fail_open: bool = True,
 ) -> Callable[[JobContext, Callable[[], Coroutine[Any, Any, Any]]], Coroutine[Any, Any, Any]]:
     """Create execution middleware that records job metrics.
 
     Args:
         recorder: A :class:`MetricsRecorder` implementation.
+        fail_open: If true, log recorder failures without affecting job
+            execution. If false, propagate recorder failures.
 
     Returns:
         Async execution middleware function.
@@ -66,17 +74,46 @@ def metrics_middleware(
         job_type = ctx.job.type
         queue = ctx.job.queue
 
-        recorder.job_started(job_type, queue)
         start = time.monotonic()
+        _record_metric(
+            "job_started",
+            lambda: recorder.job_started(job_type, queue),
+            fail_open=fail_open,
+        )
 
         try:
             result = await next_handler()
-            duration = time.monotonic() - start
-            recorder.job_completed(job_type, queue, duration)
-            return result
         except Exception as exc:
             duration = time.monotonic() - start
-            recorder.job_failed(job_type, queue, duration, exc)
+            try:
+                _record_metric(
+                    "job_failed",
+                    partial(recorder.job_failed, job_type, queue, duration, exc),
+                    fail_open=fail_open,
+                )
+            except Exception as recorder_error:
+                raise recorder_error from exc
             raise
+        duration = time.monotonic() - start
+        _record_metric(
+            "job_completed",
+            lambda: recorder.job_completed(job_type, queue, duration),
+            fail_open=fail_open,
+        )
+        return result
 
     return middleware
+
+
+def _record_metric(
+    phase: str,
+    record: Callable[[], None],
+    *,
+    fail_open: bool,
+) -> None:
+    try:
+        record()
+    except Exception:
+        if not fail_open:
+            raise
+        logger.exception("Metrics recorder failed during %s; continuing job execution", phase)
