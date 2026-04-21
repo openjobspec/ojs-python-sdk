@@ -3,23 +3,27 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from datetime import datetime
 
 import pytest
 
-from ojs.durable import DurableContext, _SideEffectEntry
+import ojs
+from ojs.durable import DurableContext, DurableReplayError, _SideEffectEntry
+from ojs.errors import OJSErrorDetail
 
 
 class FakeTransport:
     """Mock transport for testing."""
 
-    def __init__(self, resume_response=None):
+    def __init__(self, resume_response=None, error: Exception | None = None):
         self._resume = resume_response or {"has_checkpoint": False}
+        self._error = error
         self.requests: list[dict] = []
 
     async def request(self, *, method: str, path: str, body=None, **kwargs):
         self.requests.append({"method": method, "path": path, "body": body})
+        if self._error is not None:
+            raise self._error
         if "/resume" in path:
             return self._resume
         return {}
@@ -43,6 +47,7 @@ async def test_create_record_mode():
     ctx = FakeJobContext()
     dc = await DurableContext.create(ctx)
     assert not dc.is_replaying
+    assert ctx.transport.requests[0]["path"] == "/checkpoints/job-1/resume"
 
 
 @pytest.mark.asyncio
@@ -82,18 +87,22 @@ async def test_side_effect():
 
 @pytest.mark.asyncio
 async def test_replay_from_checkpoint():
-    replay_log = json.dumps([
-        {"seq": 0, "type": "time", "key": "now", "result": "2026-01-15T10:00:00+00:00"},
-        {"seq": 1, "type": "random", "result": "deadbeef01234567"},
-        {"seq": 2, "type": "call", "key": "api-call", "result": {"price": 99.99}},
-    ])
+    replay_log = json.dumps(
+        [
+            {"seq": 0, "type": "time", "key": "now", "result": "2026-01-15T10:00:00+00:00"},
+            {"seq": 1, "type": "random", "result": "deadbeef01234567"},
+            {"seq": 2, "type": "call", "key": "api-call", "result": {"price": 99.99}},
+        ]
+    )
 
-    transport = FakeTransport(resume_response={
-        "has_checkpoint": True,
-        "checkpoint": {
-            "metadata": {"_replay_log": replay_log},
-        },
-    })
+    transport = FakeTransport(
+        resume_response={
+            "has_checkpoint": True,
+            "checkpoint": {
+                "metadata": {"_replay_log": replay_log},
+            },
+        }
+    )
 
     ctx = FakeJobContext(job_id="job-replay", attempt=2, transport=transport)
     dc = await DurableContext.create(ctx)
@@ -133,6 +142,7 @@ async def test_checkpoint():
     # Verify POST was sent
     post_reqs = [r for r in transport.requests if r["method"] == "POST"]
     assert len(post_reqs) == 1
+    assert post_reqs[0]["path"] == "/checkpoints/job-1"
     assert post_reqs[0]["body"]["step_index"] == 2
 
 
@@ -146,6 +156,7 @@ async def test_complete():
 
     delete_reqs = [r for r in transport.requests if r["method"] == "DELETE"]
     assert len(delete_reqs) == 1
+    assert delete_reqs[0]["path"] == "/checkpoints/job-1"
 
 
 @pytest.mark.asyncio
@@ -173,3 +184,84 @@ def test_side_effect_entry_roundtrip():
     assert restored.type == "call"
     assert restored.key == "test"
     assert restored.result == {"x": 1}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        ojs.OJSTimeoutError("timeout"),
+        ojs.OJSAPIError(
+            500,
+            OJSErrorDetail(
+                code="BACKEND_ERROR",
+                message="failed",
+                retryable=True,
+            ),
+        ),
+        ojs.OJSAPIError(
+            401,
+            OJSErrorDetail(
+                code="UNAUTHENTICATED",
+                message="denied",
+                retryable=False,
+            ),
+        ),
+    ],
+)
+async def test_checkpoint_load_failures_propagate(error: Exception) -> None:
+    transport = FakeTransport(error=error)
+    ctx = FakeJobContext(transport=transport)
+
+    with pytest.raises(type(error)):
+        await DurableContext.create(ctx)
+
+
+@pytest.mark.asyncio
+async def test_malformed_replay_log_fails_closed() -> None:
+    transport = FakeTransport(
+        resume_response={
+            "has_checkpoint": True,
+            "checkpoint": {"metadata": {"_replay_log": "{not json"}},
+        }
+    )
+
+    with pytest.raises(DurableReplayError, match="invalid JSON"):
+        await DurableContext.create(FakeJobContext(transport=transport))
+
+
+@pytest.mark.asyncio
+async def test_replay_cursor_mismatch_does_not_call_live_side_effect() -> None:
+    replay_log = json.dumps([{"seq": 0, "type": "call", "key": "expected", "result": 42}])
+    transport = FakeTransport(
+        resume_response={
+            "has_checkpoint": True,
+            "checkpoint": {"metadata": {"_replay_log": replay_log}},
+        }
+    )
+    dc = await DurableContext.create(FakeJobContext(transport=transport))
+    called = False
+
+    async def live_effect() -> int:
+        nonlocal called
+        called = True
+        return 7
+
+    with pytest.raises(DurableReplayError, match="side effect key"):
+        await dc.side_effect("different", live_effect)
+
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_paths_encode_job_ids() -> None:
+    transport = FakeTransport()
+    dc = await DurableContext.create(FakeJobContext(job_id="tenant/job id", transport=transport))
+    await dc.checkpoint(1, {})
+    await dc.complete()
+
+    assert [request["path"] for request in transport.requests] == [
+        "/checkpoints/tenant%2Fjob%20id/resume",
+        "/checkpoints/tenant%2Fjob%20id",
+        "/checkpoints/tenant%2Fjob%20id",
+    ]

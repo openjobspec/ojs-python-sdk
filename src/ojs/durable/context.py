@@ -30,44 +30,20 @@ Usage::
 
 from __future__ import annotations
 
-import json
-import logging
-import os
 import secrets
-import time
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, TypeVar
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Any, TypeVar, cast
+
+from ojs.durable.checkpoint_endpoint import checkpoint_path
+from ojs.durable.replay_loader import (
+    DurableReplayError,
+    ReplayLogEntry,
+    load_replay_log,
+)
+from ojs.transport.capabilities import CheckpointTransport
 
 T = TypeVar("T")
-
-BASE_PATH = "/ojs/v1"
-
-
-class _SideEffectEntry:
-    """A recorded side effect."""
-
-    __slots__ = ("seq", "type", "key", "result")
-
-    def __init__(self, seq: int, effect_type: str, result: Any, key: str = "") -> None:
-        self.seq = seq
-        self.type = effect_type
-        self.key = key
-        self.result = result
-
-    def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"seq": self.seq, "type": self.type, "result": self.result}
-        if self.key:
-            d["key"] = self.key
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> _SideEffectEntry:
-        return cls(
-            seq=data["seq"],
-            effect_type=data["type"],
-            result=data["result"],
-            key=data.get("key", ""),
-        )
 
 
 class DurableContext:
@@ -77,11 +53,16 @@ class DurableContext:
     them from a checkpoint on retry, ensuring idempotent re-execution.
     """
 
-    def __init__(self, transport: Any, job_id: str, attempt: int) -> None:
+    def __init__(
+        self,
+        transport: CheckpointTransport | None,
+        job_id: str,
+        attempt: int,
+    ) -> None:
         self._transport = transport
         self._job_id = job_id
         self._attempt = attempt
-        self._entries: list[_SideEffectEntry] = []
+        self._entries: list[ReplayLogEntry] = []
         self._cursor = 0
         self._replaying = False
 
@@ -99,26 +80,10 @@ class DurableContext:
         dc = cls(transport, job_id, attempt)
 
         if transport is not None:
-            try:
-                resp = await transport.request(
-                    method="GET",
-                    path=f"{BASE_PATH}/checkpoints/{job_id}/resume",
-                )
-                data = resp if isinstance(resp, dict) else getattr(resp, "body", {})
-                if isinstance(data, dict) and data.get("has_checkpoint"):
-                    cp = data.get("checkpoint", {})
-                    metadata = cp.get("metadata", {}) if isinstance(cp, dict) else {}
-                    replay_log = metadata.get("_replay_log", "")
-                    if replay_log:
-                        entries = json.loads(replay_log)
-                        if isinstance(entries, list) and entries:
-                            dc._entries = [_SideEffectEntry.from_dict(e) for e in entries]
-                            dc._replaying = True
-            except Exception as exc:
-                logging.getLogger("ojs.durable").debug(
-                    "No checkpoint found for job %s (starting in record mode): %s",
-                    job_id, exc,
-                )
+            entries = await load_replay_log(transport, job_id)
+            if entries:
+                dc._entries = entries
+                dc._replaying = True
 
         return dc
 
@@ -128,17 +93,21 @@ class DurableContext:
         On first execution, records ``datetime.now(UTC)``.
         On replay, returns the recorded value.
         """
-        if self._replaying and self._cursor < len(self._entries):
-            entry = self._entries[self._cursor]
-            if entry.type == "time":
-                self._cursor += 1
-                self._check_replay_done()
-                return datetime.fromisoformat(entry.result)
+        entry = self._replay_entry("time", "now")
+        if entry is not None:
+            if not isinstance(entry.result, str):
+                raise DurableReplayError("replayed time value must be a string")
+            return datetime.fromisoformat(entry.result)
 
-        t = datetime.now(timezone.utc)
-        self._entries.append(_SideEffectEntry(
-            seq=len(self._entries), effect_type="time", result=t.isoformat(), key="now",
-        ))
+        t = datetime.now(UTC)
+        self._entries.append(
+            ReplayLogEntry(
+                seq=len(self._entries),
+                type="time",
+                result=t.isoformat(),
+                key="now",
+            )
+        )
         self._replaying = False
         return t
 
@@ -148,17 +117,14 @@ class DurableContext:
         Args:
             num_bytes: Number of random bytes (output is 2x this in hex chars).
         """
-        if self._replaying and self._cursor < len(self._entries):
-            entry = self._entries[self._cursor]
-            if entry.type == "random":
-                self._cursor += 1
-                self._check_replay_done()
-                return entry.result
+        entry = self._replay_entry("random")
+        if entry is not None:
+            if not isinstance(entry.result, str):
+                raise DurableReplayError("replayed random value must be a string")
+            return entry.result
 
         s = secrets.token_hex(num_bytes)
-        self._entries.append(_SideEffectEntry(
-            seq=len(self._entries), effect_type="random", result=s,
-        ))
+        self._entries.append(ReplayLogEntry(seq=len(self._entries), type="random", result=s))
         self._replaying = False
         return s
 
@@ -179,18 +145,20 @@ class DurableContext:
 
             price = await dc.side_effect("fetch-price", lambda: fetch_price(product_id))
         """
-        if self._replaying and self._cursor < len(self._entries):
-            entry = self._entries[self._cursor]
-            if entry.type == "call" and (not key or entry.key == key):
-                self._cursor += 1
-                self._check_replay_done()
-                return entry.result  # type: ignore[return-value]
+        entry = self._replay_entry("call", key)
+        if entry is not None:
+            return cast(T, entry.result)
 
         self._replaying = False
         result = await fn()
-        self._entries.append(_SideEffectEntry(
-            seq=len(self._entries), effect_type="call", result=result, key=key,
-        ))
+        self._entries.append(
+            ReplayLogEntry(
+                seq=len(self._entries),
+                type="call",
+                result=result,
+                key=key,
+            )
+        )
         return result
 
     async def checkpoint(self, step_index: int, state: Any) -> None:
@@ -202,12 +170,14 @@ class DurableContext:
             step_index: The step number (for ordering).
             state: Arbitrary state to save (must be JSON-serializable).
         """
-        replay_log = json.dumps([e.to_dict() for e in self._entries])
+        import json
+
+        replay_log = json.dumps([entry.to_dict() for entry in self._entries])
 
         if self._transport is not None:
             await self._transport.request(
                 method="POST",
-                path=f"{BASE_PATH}/checkpoints/{self._job_id}",
+                path=checkpoint_path(self._job_id),
                 body={
                     "state": state,
                     "step_index": step_index,
@@ -223,7 +193,7 @@ class DurableContext:
         if self._transport is not None:
             await self._transport.request(
                 method="DELETE",
-                path=f"{BASE_PATH}/checkpoints/{self._job_id}",
+                path=checkpoint_path(self._job_id),
             )
 
     @property
@@ -234,3 +204,27 @@ class DurableContext:
     def _check_replay_done(self) -> None:
         if self._cursor >= len(self._entries):
             self._replaying = False
+
+    def _replay_entry(
+        self,
+        effect_type: str,
+        key: str = "",
+    ) -> ReplayLogEntry | None:
+        if not self._replaying:
+            return None
+        if self._cursor >= len(self._entries):
+            self._replaying = False
+            return None
+        entry = self._entries[self._cursor]
+        if entry.type != effect_type:
+            raise DurableReplayError(
+                f"replay cursor {self._cursor} expected {effect_type!r}, found {entry.type!r}"
+            )
+        if effect_type == "call" and entry.key != key:
+            raise DurableReplayError(
+                f"replay cursor {self._cursor} expected side effect key {key!r}, "
+                f"found {entry.key!r}"
+            )
+        self._cursor += 1
+        self._check_replay_done()
+        return entry
