@@ -21,11 +21,11 @@ worker = ojs.Worker(
 
 # Register execution middleware
 @worker.middleware
-async def timing_middleware(ctx: ojs.JobContext, next):
+async def timing_middleware(ctx: ojs.JobContext, call_next):
     """Measure and log job execution time."""
     start = time.monotonic()
     try:
-        result = await next()
+        result = await call_next()
         elapsed = time.monotonic() - start
         logging.info(
             "Job %s (%s) completed in %.3fs",
@@ -46,12 +46,12 @@ async def timing_middleware(ctx: ojs.JobContext, next):
 
 
 @worker.middleware
-async def metadata_middleware(ctx: ojs.JobContext, next):
+async def metadata_middleware(ctx: ojs.JobContext, call_next):
     """Log trace IDs from job metadata."""
     trace_id = ctx.meta.get("trace_id")
     if trace_id:
         logging.info("Processing job %s with trace_id=%s", ctx.job_id, trace_id)
-    return await next()
+    return await call_next()
 
 
 # Register job handlers

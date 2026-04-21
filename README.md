@@ -1,5 +1,5 @@
 # ojs-python-sdk
-[![Stability: stable](https://img.shields.io/badge/stability-stable-brightgreen.svg)](https://github.com/openjobspec/openjobspec/blob/main/STABILITY.md)
+[![Stability: stable](https://img.shields.io/badge/stability-stable-brightgreen.svg)](https://openjobspec.org)
 
 [![CI](https://github.com/openjobspec/ojs-python-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/openjobspec/ojs-python-sdk/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/openjobspec)](https://pypi.org/project/openjobspec/)
@@ -8,12 +8,12 @@
 
 The official Python SDK for [Open Job Spec (OJS)](https://openjobspec.org) -- a vendor-neutral, language-agnostic specification for background job processing.
 
-> **🚀 Try it now:** [Open in Playground](https://playground.openjobspec.org?lang=python) · [Run on CodeSandbox](https://codesandbox.io/p/sandbox/openjobspec-python-quickstart) · [Docker Quickstart](https://github.com/openjobspec/openjobspec/blob/main/docker-compose.quickstart.yml)
+> **🚀 Try it now:** [Open in Playground](https://playground.openjobspec.org?lang=python) · [Run on CodeSandbox](https://codesandbox.io/p/sandbox/openjobspec-python-quickstart) · [Quickstart](https://openjobspec.org/getting-started/quickstart/)
 
 ## Features
 
 - **Async-first** -- built on `asyncio` with `httpx` for HTTP transport
-- **Full OJS coverage** -- jobs, retries, workflows, middleware, events, cron, dead-letter queues
+- **Broad OJS API coverage** -- jobs, retries, workflows, middleware, events, cron, and dead-letter queues
 - **Type-safe** -- complete type hints for all public APIs; strict `mypy` compatible
 - **Structured concurrency** -- worker uses `asyncio.TaskGroup` (Python 3.11+)
 - **Middleware** -- enqueue (client-side) and execution (worker-side) middleware with `next()` pattern
@@ -111,6 +111,7 @@ pip install -e ".[dev]"
 import asyncio
 import ojs
 
+
 async def main():
     async with ojs.Client("http://localhost:8080") as client:
         job = await client.enqueue(
@@ -119,6 +120,7 @@ async def main():
             queue="email",
         )
         print(f"Enqueued: {job.id}")
+
 
 asyncio.run(main())
 ```
@@ -135,11 +137,13 @@ worker = ojs.Worker(
     concurrency=10,
 )
 
+
 @worker.register("email.send")
 async def handle_email(ctx: ojs.JobContext):
     to, template = ctx.args[0], ctx.args[1]
     # ... send the email ...
     return {"sent": True}
+
 
 asyncio.run(worker.start())
 ```
@@ -169,10 +173,12 @@ job = await client.enqueue(
 ### Batch Enqueue
 
 ```python
-jobs = await client.enqueue_batch([
-    ojs.JobRequest(type="email.send", args=["a@b.com", "welcome"], queue="email"),
-    ojs.JobRequest(type="email.send", args=["c@d.com", "welcome"], queue="email"),
-])
+jobs = await client.enqueue_batch(
+    [
+        ojs.JobRequest(type="email.send", args=["a@b.com", "welcome"], queue="email"),
+        ojs.JobRequest(type="email.send", args=["c@d.com", "welcome"], queue="email"),
+    ]
+)
 ```
 
 ## Client API Reference
@@ -253,12 +259,12 @@ graph TD
 ```python
 worker = ojs.Worker(
     "http://localhost:8080",
-    queues=["email", "default"],    # Queues to subscribe to
-    concurrency=10,                 # Max parallel jobs
-    poll_interval=2.0,              # Seconds between fetch attempts
-    heartbeat_interval=5.0,         # Seconds between heartbeats
-    visibility_timeout_ms=30000,    # Job reservation period (ms)
-    timeout=30.0,                   # HTTP request timeout (s)
+    queues=["email", "default"],  # Queues to subscribe to
+    concurrency=10,  # Max parallel jobs
+    poll_interval=2.0,  # Seconds between fetch attempts
+    heartbeat_interval=5.0,  # Seconds between heartbeats
+    visibility_timeout_ms=30000,  # Job reservation period (ms)
+    timeout=30.0,  # HTTP request timeout (s)
     headers={"Authorization": "Bearer token"},
 )
 ```
@@ -273,9 +279,11 @@ async def handle_email(ctx: ojs.JobContext):
     await send_email(to)
     return {"sent": True}
 
+
 # Non-decorator form
 async def handle_export(ctx: ojs.JobContext):
     await export_data(ctx.args[0])
+
 
 worker.handler("data.export", handle_export)
 ```
@@ -313,11 +321,14 @@ Jobs execute one after another. Each job receives the result of the previous job
 
 ```python
 wf = await client.workflow(
-    ojs.chain("onboarding", [
-        ojs.JobRequest(type="user.create", args=["user@example.com"]),
-        ojs.JobRequest(type="email.send", args=["user@example.com", "welcome"]),
-        ojs.JobRequest(type="analytics.track", args=["signup"]),
-    ])
+    ojs.chain(
+        "onboarding",
+        [
+            ojs.JobRequest(type="user.create", args=["user@example.com"]),
+            ojs.JobRequest(type="email.send", args=["user@example.com", "welcome"]),
+            ojs.JobRequest(type="analytics.track", args=["signup"]),
+        ],
+    )
 )
 print(f"Workflow {wf.id}: {wf.state}")
 ```
@@ -328,11 +339,14 @@ All jobs execute concurrently with no ordering guarantees.
 
 ```python
 wf = await client.workflow(
-    ojs.group("resize-images", [
-        ojs.JobRequest(type="image.resize", args=["img.jpg", "small"]),
-        ojs.JobRequest(type="image.resize", args=["img.jpg", "medium"]),
-        ojs.JobRequest(type="image.resize", args=["img.jpg", "large"]),
-    ])
+    ojs.group(
+        "resize-images",
+        [
+            ojs.JobRequest(type="image.resize", args=["img.jpg", "small"]),
+            ojs.JobRequest(type="image.resize", args=["img.jpg", "medium"]),
+            ojs.JobRequest(type="image.resize", args=["img.jpg", "large"]),
+        ],
+    )
 )
 ```
 
@@ -342,14 +356,16 @@ All jobs execute concurrently. Callback jobs fire when all jobs reach terminal s
 
 ```python
 wf = await client.workflow(
-    ojs.batch("data-import", [
-        ojs.JobRequest(type="import.chunk", args=[1, 1000]),
-        ojs.JobRequest(type="import.chunk", args=[1001, 2000]),
-        ojs.JobRequest(type="import.chunk", args=[2001, 3000]),
-    ],
-    on_complete=ojs.JobRequest(type="import.finalize", args=[]),
-    on_success=ojs.JobRequest(type="notify.done", args=[]),
-    on_failure=ojs.JobRequest(type="notify.failure", args=[]),
+    ojs.batch(
+        "data-import",
+        [
+            ojs.JobRequest(type="import.chunk", args=[1, 1000]),
+            ojs.JobRequest(type="import.chunk", args=[1001, 2000]),
+            ojs.JobRequest(type="import.chunk", args=[2001, 3000]),
+        ],
+        on_complete=ojs.JobRequest(type="import.finalize", args=[]),
+        on_success=ojs.JobRequest(type="notify.done", args=[]),
+        on_failure=ojs.JobRequest(type="notify.failure", args=[]),
     )
 )
 ```
@@ -389,6 +405,7 @@ async def add_trace_id(request, next):
     request.meta["trace_id"] = generate_trace_id()
     return await next(request)
 
+
 @client.enqueue_middleware
 async def validate_args(request, next):
     if not request.args:
@@ -407,6 +424,7 @@ async def error_reporter(ctx: ojs.JobContext, next):
     except Exception as exc:
         await report_to_sentry(exc, job_id=ctx.job_id)
         raise
+
 
 worker.middleware(error_reporter)
 ```
@@ -441,12 +459,14 @@ worker.middleware(timeout_middleware(seconds=30))
 **Retry** -- retry failed executions with exponential backoff and jitter:
 
 ```python
-worker.middleware(retry_middleware(
-    max_retries=3,
-    base_delay=0.1,
-    max_delay=30.0,
-    jitter=True,
-))
+worker.middleware(
+    retry_middleware(
+        max_retries=3,
+        base_delay=0.1,
+        max_delay=30.0,
+        jitter=True,
+    )
+)
 ```
 
 **Metrics** -- pluggable metrics recording via the `MetricsRecorder` protocol:
@@ -455,7 +475,10 @@ worker.middleware(retry_middleware(
 class MyRecorder:
     def job_started(self, job_type: str, queue: str) -> None: ...
     def job_completed(self, job_type: str, queue: str, duration_s: float) -> None: ...
-    def job_failed(self, job_type: str, queue: str, duration_s: float, error: Exception) -> None: ...
+    def job_failed(
+        self, job_type: str, queue: str, duration_s: float, error: Exception
+    ) -> None: ...
+
 
 worker.middleware(metrics_middleware(MyRecorder()))
 ```
@@ -537,43 +560,43 @@ The SDK provides event type constants for the OJS event system:
 from ojs import Event, EventType
 
 # Core job events
-EventType.JOB_ENQUEUED      # "job.enqueued"
-EventType.JOB_STARTED       # "job.started"
-EventType.JOB_COMPLETED     # "job.completed"
-EventType.JOB_FAILED        # "job.failed"
+EventType.JOB_ENQUEUED  # "job.enqueued"
+EventType.JOB_STARTED  # "job.started"
+EventType.JOB_COMPLETED  # "job.completed"
+EventType.JOB_FAILED  # "job.failed"
 
 # Extended job events
-EventType.JOB_RETRYING      # "job.retrying"
-EventType.JOB_CANCELLED     # "job.cancelled"
-EventType.JOB_DISCARDED     # "job.discarded"
-EventType.JOB_HEARTBEAT     # "job.heartbeat"
-EventType.JOB_SCHEDULED     # "job.scheduled"
+EventType.JOB_RETRYING  # "job.retrying"
+EventType.JOB_CANCELLED  # "job.cancelled"
+EventType.JOB_DISCARDED  # "job.discarded"
+EventType.JOB_HEARTBEAT  # "job.heartbeat"
+EventType.JOB_SCHEDULED  # "job.scheduled"
 
 # Workflow events
-EventType.WORKFLOW_STARTED   # "workflow.started"
-EventType.WORKFLOW_COMPLETED # "workflow.completed"
-EventType.WORKFLOW_FAILED    # "workflow.failed"
+EventType.WORKFLOW_STARTED  # "workflow.started"
+EventType.WORKFLOW_COMPLETED  # "workflow.completed"
+EventType.WORKFLOW_FAILED  # "workflow.failed"
 
 # Cron events
-EventType.CRON_TRIGGERED     # "cron.triggered"
-EventType.CRON_SKIPPED       # "cron.skipped"
+EventType.CRON_TRIGGERED  # "cron.triggered"
+EventType.CRON_SKIPPED  # "cron.skipped"
 
 # Worker events
-EventType.WORKER_STARTED     # "worker.started"
-EventType.WORKER_STOPPED     # "worker.stopped"
-EventType.WORKER_QUIET       # "worker.quiet"
+EventType.WORKER_STARTED  # "worker.started"
+EventType.WORKER_STOPPED  # "worker.stopped"
+EventType.WORKER_QUIET  # "worker.quiet"
 ```
 
 Events follow the CloudEvents-inspired envelope with convenient property accessors:
 
 ```python
 event = Event.from_dict(raw_event)
-print(event.event)     # e.g., "job.completed"
-print(event.job_id)    # e.g., "019..."
+print(event.event)  # e.g., "job.completed"
+print(event.job_id)  # e.g., "019..."
 print(event.job_type)  # e.g., "email.send"
-print(event.queue)     # e.g., "email"
-print(event.state)     # e.g., "completed"
-print(event.timestamp) # datetime object
+print(event.queue)  # e.g., "email"
+print(event.state)  # e.g., "completed"
+print(event.timestamp)  # datetime object
 ```
 
 ## Testing
@@ -583,6 +606,7 @@ The SDK includes a built-in testing module that lets you write unit tests withou
 ```python
 import pytest
 from ojs.testing import fake_mode, assert_enqueued, refute_enqueued, all_enqueued, clear_all
+
 
 @pytest.fixture(autouse=True)
 def ojs_testing():
@@ -626,6 +650,7 @@ async def test_signup_enqueues_welcome_email():
 ```python
 from ojs.testing import fake_mode, drain
 
+
 def test_drain_processes_jobs():
     with fake_mode() as store:
         store.register_handler("email.send", lambda job: None)
@@ -663,10 +688,12 @@ from ojs.otel import opentelemetry_middleware
 worker.middleware(opentelemetry_middleware())
 
 # Or supply explicit providers
-worker.middleware(opentelemetry_middleware(
-    tracer_provider=my_tracer_provider,
-    meter_provider=my_meter_provider,
-))
+worker.middleware(
+    opentelemetry_middleware(
+        tracer_provider=my_tracer_provider,
+        meter_provider=my_meter_provider,
+    )
+)
 ```
 
 The middleware creates a CONSUMER span for each job and records:
@@ -739,11 +766,13 @@ Span attributes follow OTel semantic conventions:
 
 ## Type Hints and mypy
 
-The SDK ships with complete type annotations for all public APIs and is tested with `mypy --strict`. All dataclasses (`Job`, `JobRequest`, `RetryPolicy`, `UniquePolicy`, `JobContext`, etc.) are fully typed.
+The SDK ships with a `py.typed` marker and its source is checked with
+`mypy --strict`. Dynamic JSON payload values remain explicitly typed as
+`Any` where the OJS wire format permits application-defined data.
 
 ```bash
 # Type check your application code
-mypy src/
+uv run mypy src/
 
 # The SDK configures strict mode in pyproject.toml:
 # [tool.mypy]
@@ -762,20 +791,23 @@ my_mw: ExecutionMiddleware = my_middleware_function
 ## Development
 
 ```bash
-# Install dev dependencies
-pip install -e ".[dev]"
+# Install locked development dependencies
+uv sync --python 3.11 --all-extras --dev
 
 # Run tests (asyncio_mode = auto)
-pytest
+uv run pytest
 
-# Run tests with coverage
-pytest --cov
+# Run tests with the configured 80% coverage gate
+uv run pytest --cov=ojs --cov-report=term-missing
 
 # Type check (strict mode)
-mypy src/
+uv run mypy src/
 
 # Lint
-ruff check src/ tests/
+uv run ruff check .
+
+# Verify deterministic formatting
+uv run ruff format --check .
 ```
 
 ## Requirements
