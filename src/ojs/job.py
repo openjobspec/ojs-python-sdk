@@ -244,9 +244,10 @@ class JobRequest:
 
 # Type alias for a job handler function
 JobHandler = Callable[["JobContext"], Coroutine[Any, Any, Any]]
+ProgressReporter = Callable[[int, str, dict[str, Any] | None], Awaitable[None]]
 
 
-@dataclass
+@dataclass(init=False)
 class JobContext:
     """Context passed to job handlers during execution.
 
@@ -254,11 +255,74 @@ class JobContext:
     interacting with the OJS server from within a handler.
     """
 
+    __signature__: ClassVar[Signature]
     job: Job
     attempt: int = 1
     parent_results: list[Any] = field(default_factory=list)
     _cancelled: bool = False
     _transport: Any = field(default=None, repr=False)
+    _retry_sleep: Callable[[float], Awaitable[None]] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _lease_remaining: Callable[[], float] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _progress_reporter: ProgressReporter | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+
+    def __init__(
+        self,
+        job: Job,
+        attempt: int = 1,
+        parent_results: list[Any] = list(),  # noqa: B006, C408 - API compatibility
+        _cancelled: bool = False,
+        _transport: Any = None,
+    ) -> None:
+        """Create handler-visible context state.
+
+        Private runtime keyword arguments remain temporarily accepted so
+        existing integrations keep working while migrating.
+        """
+        object.__setattr__(self, "job", job)
+        object.__setattr__(self, "attempt", attempt)
+        object.__setattr__(
+            self,
+            "parent_results",
+            list(parent_results) if parent_results is not None else [],
+        )
+        object.__setattr__(self, "_cancelled", _cancelled)
+        object.__setattr__(self, "_transport", _transport)
+        object.__setattr__(self, "_retry_sleep", None)
+        object.__setattr__(self, "_lease_remaining", None)
+        object.__setattr__(self, "_progress_reporter", None)
+
+        if _cancelled or _transport is not None:
+            warnings.warn(
+                "private JobContext constructor arguments are deprecated; "
+                "construct JobContext with job, attempt, and parent_results only",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+    def _bind_runtime(
+        self,
+        *,
+        transport: Any = None,
+        retry_sleep: Callable[[float], Awaitable[None]] | None = None,
+        lease_remaining: Callable[[], float] | None = None,
+        progress_reporter: ProgressReporter | None = None,
+    ) -> None:
+        self._transport = transport
+        self._retry_sleep = retry_sleep
+        self._lease_remaining = lease_remaining
+        self._progress_reporter = progress_reporter
 
     @property
     def job_id(self) -> str:
@@ -283,3 +347,53 @@ class JobContext:
     def cancel(self) -> None:
         """Mark this job execution as cancelled (checked by the worker)."""
         self._cancelled = True
+
+    @property
+    def lease_remaining(self) -> float | None:
+        """Seconds remaining on the active worker lease, when available."""
+        if self._lease_remaining is None:
+            return None
+        return self._lease_remaining()
+
+    async def sleep_before_retry(self, delay: float) -> None:
+        """Sleep using the worker's lease-aware retry budget."""
+        if self._retry_sleep is None:
+            await asyncio.sleep(delay)
+            return
+        await self._retry_sleep(delay)
+
+    async def report_progress(
+        self,
+        percentage: int,
+        message: str = "",
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        """Report progress for the active job through its worker runtime."""
+        if self._progress_reporter is None:
+            raise OJSCapabilityError(
+                "progress reporting is unavailable outside an active worker execution"
+            )
+        await self._progress_reporter(percentage, message, data)
+
+
+JobContext.__signature__ = Signature(
+    [
+        Parameter(
+            "job",
+            Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=Job,
+        ),
+        Parameter(
+            "attempt",
+            Parameter.POSITIONAL_OR_KEYWORD,
+            default=1,
+            annotation=int,
+        ),
+        Parameter(
+            "parent_results",
+            Parameter.POSITIONAL_OR_KEYWORD,
+            default=None,
+            annotation=list[Any] | None,
+        ),
+    ]
+)
