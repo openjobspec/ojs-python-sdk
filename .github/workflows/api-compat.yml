@@ -22,21 +22,22 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -e ".[dev]"
-          pip install griffe
+          python -m pip install "uv==0.11.28"
+          uv sync --locked --python 3.13 --all-extras --dev
+
+      - name: Build and validate shipped package
+        run: |
+          uv build
+          uv venv .api-compat-venv --python 3.13
+          uv pip install --python .api-compat-venv/bin/python dist/*.whl
+          .api-compat-venv/bin/python -c "import importlib.metadata as m, ojs; assert m.version('openjobspec') == ojs.__version__; missing = [name for name in ojs.__all__ if not hasattr(ojs, name)]; assert not missing, missing"
+          if .api-compat-venv/bin/python -c "import openjobspec" 2>/dev/null; then
+            echo "::error::Wheel unexpectedly ships the duplicate openjobspec package."
+            exit 1
+          fi
 
       - name: Check for breaking changes
         run: |
-          # Compare against the base branch
           BASE_REF="origin/${{ github.event.pull_request.base.ref }}"
           git fetch origin "${{ github.event.pull_request.base.ref }}" --depth=1
-
-          griffe check src/openjobspec --against "$BASE_REF" 2>&1 || {
-            # griffe returns non-zero on breaking changes
-            EXIT_CODE=$?
-            if [ $EXIT_CODE -eq 1 ]; then
-              echo "::error::Breaking API changes detected. If intentional, add 'breaking-change' label."
-              exit 1
-            fi
-            echo "::notice::griffe check completed with warnings."
-          }
+          uv run griffe check -s src ojs --against "$BASE_REF" --format github

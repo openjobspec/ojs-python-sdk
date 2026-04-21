@@ -14,8 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
-    uses: openjobspec/.github/.github/workflows/ci-python.yml@main
+        python-version: ["3.11", "3.12", "3.13"]
+    uses: openjobspec/.github/.github/workflows/ci-python.yml@baf3b6896d4578c5586ef692daf7958f8e9a2d8a
     with:
       python-version: ${{ matrix.python-version }}
       working-directory: .
