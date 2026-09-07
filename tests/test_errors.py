@@ -1,9 +1,14 @@
 """Tests for OJS error types and raise_for_error mapping."""
 
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
+
 import pytest
 
 import ojs
+from ojs.error_codes import ALL_ERROR_CODES
 from ojs.errors import OJSErrorDetail, RateLimitInfo, raise_for_error
+from ojs.errors.rate_limit_headers import parse_retry_after
 
 
 class TestOJSErrorDetail:
@@ -185,3 +190,69 @@ class TestRaiseForError:
             raise_for_error(500, body, None)
         assert exc_info.value.error.request_id == "req-abc-123"
         assert exc_info.value.error.details["stack"] == "traceback here"
+
+    @pytest.mark.parametrize("entry", ALL_ERROR_CODES, ids=lambda entry: entry.code)
+    def test_catalog_codes_use_catalog_retryability(self, entry: object) -> None:
+        canonical_code = entry.canonical_code
+        if not canonical_code:
+            pytest.skip("client-only or extension code has no canonical wire code")
+
+        with pytest.raises(ojs.OJSAPIError) as exc_info:
+            raise_for_error(
+                entry.http_status,
+                {"error": {"code": canonical_code}},
+            )
+
+        assert exc_info.value.code == canonical_code
+        assert exc_info.value.retryable is entry.retryable
+
+    @pytest.mark.parametrize(
+        ("legacy", "canonical", "exception_type"),
+        [
+            ("duplicate", "DUPLICATE_JOB", ojs.DuplicateJobError),
+            ("not_found", "NOT_FOUND", ojs.JobNotFoundError),
+            ("queue_paused", "QUEUE_PAUSED", ojs.QueuePausedError),
+            ("rate_limited", "RATE_LIMITED", ojs.RateLimitedError),
+        ],
+    )
+    def test_legacy_and_canonical_aliases_match(
+        self,
+        legacy: str,
+        canonical: str,
+        exception_type: type[ojs.OJSAPIError],
+    ) -> None:
+        for code in (legacy, canonical):
+            with pytest.raises(exception_type):
+                raise_for_error(
+                    429 if canonical == "RATE_LIMITED" else 400,
+                    {"error": {"code": code}},
+                )
+
+    def test_malformed_error_preserves_raw_value(self) -> None:
+        with pytest.raises(ojs.OJSAPIError) as exc_info:
+            raise_for_error(500, {"error": ["unexpected", "shape"]})
+
+        assert exc_info.value.error.details["raw_error"] == ["unexpected", "shape"]
+
+    def test_unknown_error_preserves_retryability_and_details(self) -> None:
+        with pytest.raises(ojs.OJSAPIError) as exc_info:
+            raise_for_error(
+                599,
+                {
+                    "error": {
+                        "code": "VENDOR_FAILURE",
+                        "message": "vendor failed",
+                        "retryable": True,
+                        "details": {"vendor": "acme"},
+                    }
+                },
+            )
+
+        assert exc_info.value.retryable is True
+        assert exc_info.value.error.details == {"vendor": "acme"}
+
+
+def test_retry_after_http_date() -> None:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    value = format_datetime(now + timedelta(seconds=45), usegmt=True)
+    assert parse_retry_after(value, now=now) == 45.0

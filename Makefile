@@ -1,32 +1,32 @@
 .PHONY: install test lint format typecheck check clean coverage docs benchmark
 
 install:
-	pip install -e ".[dev]"
+	uv sync --locked --python 3.11 --all-extras --dev
 
 test:
-	pytest
+	uv run pytest
 
 coverage:
-	pytest --cov=ojs --cov-report=term-missing --cov-report=xml
+	uv run pytest --cov=ojs --cov-report=term-missing --cov-report=xml
 
 lint:
-	ruff check .
-	ruff format --check .
+	uv run ruff check .
+	uv run ruff format --check .
 
 format:
-	ruff format .
-	ruff check --fix .
+	uv run ruff format .
+	uv run ruff check --fix .
 
 typecheck:
-	mypy src/
+	uv run mypy src/
 
 check: lint typecheck test
 
 benchmark:
-	pytest tests/test_benchmarks.py --benchmark-only
+	uv run pytest tests/test_benchmarks.py --benchmark-only
 
 docs:
-	sphinx-build -b html docs docs/_build/html
+	uv run sphinx-build -W -b html docs docs/_build/html
 
 clean:
 	rm -rf dist/ build/ *.egg-info src/*.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage coverage.xml docs/_build

@@ -139,8 +139,8 @@ class ExecutionMiddlewareChain:
 from ojs.middleware.logging import logging_middleware  # noqa: E402
 from ojs.middleware.metrics import MetricsRecorder, metrics_middleware  # noqa: E402
 from ojs.middleware.retry import retry_middleware  # noqa: E402
+from ojs.middleware.timeout import JobExecutionTimeout, timeout_middleware  # noqa: E402
 from ojs.middleware.timeout import TimeoutError as MiddlewareTimeoutError  # noqa: E402
-from ojs.middleware.timeout import timeout_middleware  # noqa: E402
 
 __all__ = [
     "EnqueueMiddleware",
@@ -149,6 +149,7 @@ __all__ = [
     "ExecutionMiddleware",
     "ExecutionMiddlewareChain",
     "ExecutionNext",
+    "JobExecutionTimeout",
     "MetricsRecorder",
     "MiddlewareTimeoutError",
     "logging_middleware",

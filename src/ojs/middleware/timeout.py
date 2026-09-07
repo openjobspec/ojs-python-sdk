@@ -7,7 +7,7 @@ Usage::
 
     from ojs.middleware.timeout import timeout_middleware
 
-    worker.add_middleware(timeout_middleware(seconds=30))
+    worker.middleware(timeout_middleware(seconds=30))
 """
 
 from __future__ import annotations
@@ -16,21 +16,12 @@ import asyncio
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+from ojs.errors import JobExecutionTimeout
 from ojs.job import JobContext
 
 
-class TimeoutError(Exception):  # noqa: A001
-    """Raised when a job exceeds its execution timeout.
-
-    Attributes:
-        timeout_seconds: The configured timeout in seconds.
-        job_id: The ID of the job that timed out.
-    """
-
-    def __init__(self, timeout_seconds: float, job_id: str) -> None:
-        self.timeout_seconds = timeout_seconds
-        self.job_id = job_id
-        super().__init__(f"Job {job_id} timed out after {timeout_seconds}s")
+class TimeoutError(JobExecutionTimeout):  # noqa: A001
+    """Deprecated compatibility name for :class:`JobExecutionTimeout`."""
 
 
 def timeout_middleware(
@@ -46,7 +37,7 @@ def timeout_middleware(
         Async execution middleware function.
 
     Raises:
-        TimeoutError: If the job exceeds the configured timeout.
+        JobExecutionTimeout: If the job exceeds the configured timeout.
     """
 
     async def middleware(
@@ -60,3 +51,6 @@ def timeout_middleware(
             raise TimeoutError(seconds, ctx.job.id) from None
 
     return middleware
+
+
+__all__ = ["JobExecutionTimeout", "TimeoutError", "timeout_middleware"]

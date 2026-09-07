@@ -4,8 +4,12 @@ Demonstrates composing multi-step job workflows.
 """
 
 import asyncio
+import logging
 
 import ojs
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
@@ -31,7 +35,7 @@ async def main() -> None:
                 ],
             )
         )
-        print(f"Chain workflow created: {wf.id} (state: {wf.state})")
+        logger.info("Chain workflow created: %s (state: %s)", wf.id, wf.state)
 
         # Group workflow: parallel execution
         wf = await client.workflow(
@@ -44,7 +48,7 @@ async def main() -> None:
                 ],
             )
         )
-        print(f"Group workflow created: {wf.id} (state: {wf.state})")
+        logger.info("Group workflow created: %s (state: %s)", wf.id, wf.state)
 
         # Batch workflow: parallel with callbacks
         wf = await client.workflow(
@@ -71,13 +75,13 @@ async def main() -> None:
                 ),
             )
         )
-        print(f"Batch workflow created: {wf.id} (state: {wf.state})")
+        logger.info("Batch workflow created: %s (state: %s)", wf.id, wf.state)
 
         # Check workflow status
         status = await client.get_workflow(wf.id)
-        print(f"Workflow {status.id}: {status.state}")
+        logger.info("Workflow %s: %s", status.id, status.state)
         for step in status.steps:
-            print(f"  Step {step.id} ({step.type}): {step.state}")
+            logger.info("  Step %s (%s): %s", step.id, step.type, step.state)
 
 
 if __name__ == "__main__":

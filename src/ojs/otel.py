@@ -10,7 +10,7 @@ Usage::
     from ojs.otel import opentelemetry_middleware
 
     worker = Worker("http://localhost:8080", queues=["default"])
-    worker.add_middleware(opentelemetry_middleware())
+    worker.middleware(opentelemetry_middleware())
 
 Prerequisites::
 
@@ -47,8 +47,8 @@ def opentelemetry_middleware(
         Async execution middleware function.
     """
     try:
-        from opentelemetry import metrics, trace  # type: ignore[import-not-found]
-        from opentelemetry.trace import SpanKind, StatusCode  # type: ignore[import-not-found]
+        from opentelemetry import metrics, trace
+        from opentelemetry.trace import SpanKind, StatusCode
     except ImportError as err:
         raise ImportError(
             "opentelemetry-api is required for OTel middleware. "

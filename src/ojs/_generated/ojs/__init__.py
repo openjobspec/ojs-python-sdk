@@ -1,0 +1,1 @@
+"""Generated OJS protocol namespace."""

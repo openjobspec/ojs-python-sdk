@@ -234,4 +234,3 @@ class TestSchemaTransport:
         )
         result = await transport.delete_schema("ojs://email.send/v1")
         assert result == {}
-

@@ -7,8 +7,10 @@ handles them without crashing. Modeled after ojs-go-sdk/fuzz_test.go.
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from typing import Any
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -201,9 +203,7 @@ class TestValidationFuzzing:
         queue=st.text(max_size=200),
     )
     @settings(max_examples=200)
-    def test_job_request_creation_never_crashes(
-        self, job_type: str, queue: str
-    ) -> None:
+    def test_job_request_creation_never_crashes(self, job_type: str, queue: str) -> None:
         """Creating a JobRequest with arbitrary type/queue must not crash."""
         req = JobRequest(type=job_type, args=[], queue=queue)
         # to_dict must not crash regardless of input
@@ -279,20 +279,17 @@ class TestErrorParsing:
                 "retryable": retryable,
             }
         }
-        try:
+        with pytest.raises(OJSAPIError) as raised:
             raise_for_error(status_code, body, None)
-        except OJSAPIError as e:
-            assert e.status_code == status_code
-            assert e.error.code == error_code
+        assert raised.value.status_code == status_code
+        assert raised.value.error.code == (error_code or "unknown")
 
     @given(body=st.dictionaries(st.text(max_size=20), json_values, max_size=5))
     @settings(max_examples=200)
     def test_raise_for_error_arbitrary_body(self, body: dict[str, Any]) -> None:
         """raise_for_error must not crash on arbitrary dict bodies."""
-        try:
+        with suppress(OJSAPIError):
             raise_for_error(500, body, None)
-        except OJSAPIError:
-            pass  # expected
 
     @given(
         headers=st.one_of(
@@ -301,9 +298,7 @@ class TestErrorParsing:
         )
     )
     @settings(max_examples=200)
-    def test_raise_for_error_arbitrary_headers(
-        self, headers: dict[str, str] | None
-    ) -> None:
+    def test_raise_for_error_arbitrary_headers(self, headers: dict[str, str] | None) -> None:
         """raise_for_error must handle arbitrary header dicts gracefully."""
         body: dict[str, Any] = {
             "error": {
@@ -312,20 +307,17 @@ class TestErrorParsing:
                 "retryable": True,
             }
         }
-        try:
+        with suppress(OJSAPIError):
             raise_for_error(429, body, headers)
-        except OJSAPIError:
-            pass  # expected
 
     @given(body=st.just({}))
     @settings(max_examples=5)
     def test_raise_for_error_empty_body(self, body: dict[str, Any]) -> None:
         """An empty body should produce an error with sensible defaults."""
-        try:
+        with pytest.raises(OJSAPIError) as raised:
             raise_for_error(500, body, None)
-        except OJSAPIError as e:
-            assert e.error.code == "unknown"
-            assert e.error.retryable is False
+        assert raised.value.error.code == "unknown"
+        assert raised.value.error.retryable is False
 
 
 # ---------------------------------------------------------------------------
@@ -350,22 +342,16 @@ class TestMiddlewareChainFuzz:
         for i in range(n):
             idx = i  # capture loop variable
 
-            async def mw(
-                request: JobRequest, nxt: Any, *, _idx: int = idx
-            ) -> Job | None:
+            async def mw(request: JobRequest, nxt: Any, *, _idx: int = idx) -> Job | None:
                 call_order.append(_idx)
                 return await nxt(request)
 
             chain.add(mw)
 
         async def final(req: JobRequest) -> Job:
-            return Job(
-                id="fuzz", type=req.type, state=JobState.AVAILABLE, args=req.args
-            )
+            return Job(id="fuzz", type=req.type, state=JobState.AVAILABLE, args=req.args)
 
-        result = await chain.execute(
-            JobRequest(type="fuzz.test", args=[1, 2]), final
-        )
+        result = await chain.execute(JobRequest(type="fuzz.test", args=[1, 2]), final)
         assert result is not None
         assert result.type == "fuzz.test"
         assert call_order == list(range(n))
@@ -380,9 +366,7 @@ class TestMiddlewareChainFuzz:
         for i in range(n):
             idx = i
 
-            async def mw(
-                ctx: JobContext, nxt: Any, *, _idx: int = idx
-            ) -> Any:
+            async def mw(ctx: JobContext, nxt: Any, *, _idx: int = idx) -> Any:
                 call_order.append(_idx)
                 return await nxt()
 
@@ -403,9 +387,7 @@ class TestMiddlewareChainFuzz:
         error_at=st.integers(min_value=0, max_value=9),
     )
     @settings(max_examples=50)
-    async def test_execution_chain_error_propagation(
-        self, n: int, error_at: int
-    ) -> None:
+    async def test_execution_chain_error_propagation(self, n: int, error_at: int) -> None:
         """Errors raised in middleware should propagate without crashing."""
         chain = ExecutionMiddlewareChain()
         actual_error_at = error_at % n  # ensure within bounds
@@ -413,9 +395,7 @@ class TestMiddlewareChainFuzz:
         for i in range(n):
             idx = i
 
-            async def mw(
-                ctx: JobContext, nxt: Any, *, _idx: int = idx
-            ) -> Any:
+            async def mw(ctx: JobContext, nxt: Any, *, _idx: int = idx) -> Any:
                 if _idx == actual_error_at:
                     raise ValueError(f"fuzz error at {_idx}")
                 return await nxt()
@@ -428,10 +408,8 @@ class TestMiddlewareChainFuzz:
         async def handler(c: JobContext) -> str:
             return "done"
 
-        try:
+        with pytest.raises(ValueError, match=f"fuzz error at {actual_error_at}"):
             await chain.execute(ctx, handler)
-        except ValueError as e:
-            assert f"fuzz error at {actual_error_at}" in str(e)
 
 
 # ---------------------------------------------------------------------------
@@ -448,9 +426,7 @@ class TestRetryPolicyFuzz:
         jitter=st.booleans(),
     )
     @settings(max_examples=200)
-    def test_retry_policy_roundtrip(
-        self, max_attempts: int, backoff: float, jitter: bool
-    ) -> None:
+    def test_retry_policy_roundtrip(self, max_attempts: int, backoff: float, jitter: bool) -> None:
         """RetryPolicy.to_dict → from_dict should preserve fields."""
         policy = RetryPolicy(
             max_attempts=max_attempts,

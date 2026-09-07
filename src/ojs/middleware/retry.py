@@ -6,17 +6,16 @@ Usage::
 
     from ojs.middleware.retry import retry_middleware
 
-    worker.add_middleware(retry_middleware(max_retries=3))
+    worker.middleware(retry_middleware(max_retries=3))
 """
 
 from __future__ import annotations
 
-import asyncio
-import random
 from collections.abc import Callable, Coroutine
 from typing import Any
 
 from ojs.job import JobContext
+from ojs.worker.execution_retry import ExecutionRetry
 
 
 def retry_middleware(
@@ -42,30 +41,17 @@ def retry_middleware(
         Async execution middleware function.
     """
 
+    retry = ExecutionRetry(
+        max_retries=max_retries,
+        base_delay=base_delay,
+        max_delay=max_delay,
+        jitter=jitter,
+    )
+
     async def middleware(
         ctx: JobContext,
         next_handler: Callable[[], Coroutine[Any, Any, Any]],
     ) -> Any:
-        last_error: BaseException | None = None
-
-        for attempt in range(max_retries + 1):
-            try:
-                return await next_handler()
-            except Exception as exc:
-                last_error = exc
-
-                if attempt >= max_retries:
-                    break
-
-                exponential_delay = base_delay * (2**attempt)
-                capped_delay = min(exponential_delay, max_delay)
-                final_delay = (
-                    capped_delay * (0.5 + random.random() * 0.5)  # noqa: S311
-                    if jitter
-                    else capped_delay
-                )
-                await asyncio.sleep(final_delay)
-
-        raise last_error  # type: ignore[misc]
+        return await retry.run(ctx, next_handler)
 
     return middleware

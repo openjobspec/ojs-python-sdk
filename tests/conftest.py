@@ -20,6 +20,7 @@ class FakeTransport(Transport):
         self.pushed: list[dict[str, Any]] = []
         self.acked: list[dict[str, Any]] = []
         self.nacked: list[dict[str, Any]] = []
+        self.progress_updates: list[dict[str, Any]] = []
         self.fetched_count = 0
         self._fetch_jobs: list[Job] = []
         self._heartbeat_responses: list[dict[str, Any]] = []
@@ -195,6 +196,7 @@ class FakeTransport(Transport):
         pass
 
     async def progress(self, body: dict[str, Any]) -> dict[str, Any]:
+        self.progress_updates.append(body)
         return {"job_id": body.get("job_id", ""), "progress": body.get("progress", 0)}
 
     async def get_progress(self, job_id: str) -> dict[str, Any]:
@@ -208,4 +210,3 @@ class FakeTransport(Transport):
         body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return {}
-

@@ -6,21 +6,23 @@ import os
 
 import pytest
 
-cryptography = pytest.importorskip("cryptography", reason="cryptography package required")
-
-from cryptography.exceptions import InvalidTag
-
-from ojs.encryption import (
-    ENCODING_ENCRYPTED,
-    META_ENCODINGS,
-    META_KEY_ID,
-    META_NONCE,
-    EncryptionCodec,
-    StaticKeyProvider,
-    decryption_middleware,
-    encryption_middleware,
-)
 from ojs.job import Job, JobContext, JobRequest, JobState
+
+try:
+    from cryptography.exceptions import InvalidTag
+
+    from ojs.encryption import (
+        ENCODING_ENCRYPTED,
+        META_ENCODINGS,
+        META_KEY_ID,
+        META_NONCE,
+        EncryptionCodec,
+        StaticKeyProvider,
+        decryption_middleware,
+        encryption_middleware,
+    )
+except ImportError:
+    pytest.skip("cryptography package required", allow_module_level=True)
 
 
 def _make_provider(
@@ -110,9 +112,7 @@ class TestCodecWithKeyRotation:
         codec_v1 = EncryptionCodec(provider_v1)
         ciphertext, nonce, key_id = codec_v1.encrypt(b"rotated secret")
 
-        provider_v2 = StaticKeyProvider(
-            keys={"v1": key_old, "v2": key_new}, current_key="v2"
-        )
+        provider_v2 = StaticKeyProvider(keys={"v1": key_old, "v2": key_new}, current_key="v2")
         codec_v2 = EncryptionCodec(provider_v2)
 
         result = codec_v2.decrypt(ciphertext, nonce, key_id)
@@ -121,9 +121,7 @@ class TestCodecWithKeyRotation:
     def test_new_encryptions_use_current_key(self) -> None:
         key_old = os.urandom(32)
         key_new = os.urandom(32)
-        provider = StaticKeyProvider(
-            keys={"v1": key_old, "v2": key_new}, current_key="v2"
-        )
+        provider = StaticKeyProvider(keys={"v1": key_old, "v2": key_new}, current_key="v2")
         codec = EncryptionCodec(provider)
 
         _, _, key_id = codec.encrypt(b"data")

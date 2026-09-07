@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import enum
-import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -88,7 +87,7 @@ class Recorder:
             args=args,
             result=result,
             duration_ms=duration_ms,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             source_map=self._pending_sourcemap,
         )
         self._entries.append(entry)

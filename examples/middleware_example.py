@@ -30,21 +30,21 @@ client = ojs.Client("http://localhost:8080")
 
 
 @client.enqueue_middleware
-async def trace_context_middleware(request, next):
+async def trace_context_middleware(request, call_next):
     """Inject distributed trace context into every enqueued job."""
     request.meta = request.meta or {}
     request.meta["trace_id"] = f"trace_{uuid.uuid4().hex[:16]}"
     request.meta["enqueued_by"] = "my-service"
     request.meta["enqueued_at_ms"] = int(time.time() * 1000)
-    return await next(request)
+    return await call_next(request)
 
 
 @client.enqueue_middleware
-async def enqueue_logging_middleware(request, next):
+async def enqueue_logging_middleware(request, call_next):
     """Log every enqueue operation with timing."""
     logging.info("[enqueue] Submitting %s to queue '%s'", request.type, request.queue)
     start = time.monotonic()
-    result = await next(request)
+    result = await call_next(request)
     elapsed = time.monotonic() - start
     if result:
         logging.info(
@@ -68,7 +68,7 @@ worker = ojs.Worker(
 
 
 @worker.middleware
-async def logging_middleware(ctx: ojs.JobContext, next):
+async def logging_middleware(ctx: ojs.JobContext, call_next):
     """Log job start, completion, and failure with duration.
 
     Outermost middleware — wraps the entire execution chain.
@@ -81,7 +81,7 @@ async def logging_middleware(ctx: ojs.JobContext, next):
     )
     start = time.monotonic()
     try:
-        result = await next()
+        result = await call_next()
         elapsed = time.monotonic() - start
         logging.info(
             "[worker] Completed %s in %.3fs",
@@ -100,14 +100,14 @@ async def logging_middleware(ctx: ojs.JobContext, next):
 
 
 @worker.middleware
-async def metrics_middleware(ctx: ojs.JobContext, next):
+async def metrics_middleware(ctx: ojs.JobContext, call_next):
     """Record success/failure metrics with duration.
 
     In production, emit to Prometheus, Datadog, or StatsD.
     """
     start = time.monotonic()
     try:
-        result = await next()
+        result = await call_next()
         duration_ms = (time.monotonic() - start) * 1000
         logging.info(
             "[metrics] ojs.jobs.completed type=%s queue=%s duration=%.1fms",
@@ -128,7 +128,7 @@ async def metrics_middleware(ctx: ojs.JobContext, next):
 
 
 @worker.middleware
-async def trace_restore_middleware(ctx: ojs.JobContext, next):
+async def trace_restore_middleware(ctx: ojs.JobContext, call_next):
     """Restore distributed trace context from job metadata.
 
     Innermost middleware — closest to the handler.
@@ -137,7 +137,7 @@ async def trace_restore_middleware(ctx: ojs.JobContext, next):
     if trace_id:
         # In a real app, restore the OpenTelemetry span context here.
         logging.info("[trace] Restoring trace context: %s", trace_id)
-    return await next()
+    return await call_next()
 
 
 # ---- Register handlers ----

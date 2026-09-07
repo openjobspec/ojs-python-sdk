@@ -22,10 +22,26 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tools
-        run: pip install hatch
+        run: python -m pip install "uv==0.11.28"
 
-      - name: Build package
-        run: hatch build
+      - name: Install locked development environment
+        run: uv sync --locked --python 3.12 --all-extras --dev
+
+      - name: Build twice and verify reproducibility
+        run: uv run python tools/check_reproducible_build.py --output-dir dist
+
+      - name: Verify artifact version matches tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          uv run python -c "from email.parser import BytesParser; from pathlib import Path; import os, zipfile; expected = os.environ['RELEASE_TAG'].removeprefix('v'); wheel = next(Path('dist').glob('*.whl')); archive = zipfile.ZipFile(wheel); metadata = next(name for name in archive.namelist() if name.endswith('.dist-info/METADATA')); actual = BytesParser().parsebytes(archive.read(metadata))['Version']; assert actual == expected, f'{actual} != {expected}'"
+
+      - name: Smoke-test built wheel
+        run: |
+          uv venv .release-smoke --python 3.12
+          WHEEL=$(find dist -name '*.whl' -print -quit)
+          uv pip install --python .release-smoke/bin/python "${WHEEL}[all]"
+          .release-smoke/bin/python -c "import azure.functions, cryptography, grpc, importlib.metadata as m, ojs, ojs.encryption, ojs.otel, ojs.serverless, ojs.transport.grpc; assert m.version('openjobspec') == ojs.__version__"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

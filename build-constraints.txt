@@ -1,0 +1,2 @@
+# Keep isolated local and release builds on the reviewed backend version.
+hatchling==1.31.0

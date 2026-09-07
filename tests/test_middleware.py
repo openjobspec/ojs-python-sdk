@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import ojs.middleware
 from ojs.job import Job, JobContext, JobRequest, JobState
 from ojs.middleware import EnqueueMiddlewareChain, ExecutionMiddlewareChain
+
+
+def test_middleware_import_resolves_to_package() -> None:
+    assert Path(ojs.middleware.__file__).name == "__init__.py"
+    assert hasattr(ojs.middleware, "__path__")
 
 
 class TestEnqueueMiddleware:
@@ -24,9 +32,9 @@ class TestEnqueueMiddleware:
     async def test_middleware_can_modify_request(self) -> None:
         chain = EnqueueMiddlewareChain()
 
-        async def add_meta(request: JobRequest, next) -> Job | None:
+        async def add_meta(request: JobRequest, call_next) -> Job | None:
             request.meta = {"added": True}
-            return await next(request)
+            return await call_next(request)
 
         chain.add(add_meta)
 
@@ -40,13 +48,13 @@ class TestEnqueueMiddleware:
         chain = EnqueueMiddlewareChain()
         order: list[str] = []
 
-        async def first(request, next):
+        async def first(request, call_next):
             order.append("first")
-            return await next(request)
+            return await call_next(request)
 
-        async def second(request, next):
+        async def second(request, call_next):
             order.append("second")
-            return await next(request)
+            return await call_next(request)
 
         chain.add(first)
         chain.add(second)
@@ -62,13 +70,13 @@ class TestEnqueueMiddleware:
         chain = EnqueueMiddlewareChain()
         order: list[str] = []
 
-        async def first(request, next):
+        async def first(request, call_next):
             order.append("first")
-            return await next(request)
+            return await call_next(request)
 
-        async def prepended(request, next):
+        async def prepended(request, call_next):
             order.append("prepended")
-            return await next(request)
+            return await call_next(request)
 
         chain.add(first)
         chain.prepend(prepended)
@@ -96,9 +104,9 @@ class TestExecutionMiddleware:
         chain = ExecutionMiddlewareChain()
         events: list[str] = []
 
-        async def timing_mw(ctx: JobContext, next) -> object:
+        async def timing_mw(ctx: JobContext, call_next) -> object:
             events.append("before")
-            result = await next()
+            result = await call_next()
             events.append("after")
             return result
 
@@ -119,15 +127,15 @@ class TestExecutionMiddleware:
         chain = ExecutionMiddlewareChain()
         events: list[str] = []
 
-        async def outer(ctx, next):
+        async def outer(ctx, call_next):
             events.append("outer-in")
-            result = await next()
+            result = await call_next()
             events.append("outer-out")
             return result
 
-        async def inner(ctx, next):
+        async def inner(ctx, call_next):
             events.append("inner-in")
-            result = await next()
+            result = await call_next()
             events.append("inner-out")
             return result
 
@@ -148,10 +156,10 @@ class TestExecutionMiddleware:
         chain = ExecutionMiddlewareChain()
         caught = False
 
-        async def error_handler(ctx, next):
+        async def error_handler(ctx, call_next):
             nonlocal caught
             try:
-                return await next()
+                return await call_next()
             except ValueError:
                 caught = True
                 return "recovered"

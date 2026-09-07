@@ -56,9 +56,9 @@ def calculate_backoff(
         return min(retry_after, config.max_backoff)
 
     # Exponential backoff with decorrelated jitter: base * random(0.5, 1.0)
-    base = config.min_backoff * (2 ** attempt)
+    base = config.min_backoff * (2.0**attempt)
     backoff = min(base, config.max_backoff)
-    jitter = 0.5 + random.random() * 0.5  # noqa: S311
+    jitter = 0.5 + random.random() * 0.5  # noqa: S311  # nosec B311
     return backoff * jitter
 
 
@@ -66,6 +66,8 @@ async def sleep_before_retry(
     attempt: int,
     retry_after: float | None,
     config: RetryConfig,
+    *,
+    reason: str = "rate_limited",
 ) -> None:
     """Sleep for the calculated backoff duration before retrying.
 
@@ -76,13 +78,10 @@ async def sleep_before_retry(
     """
     delay = calculate_backoff(attempt, retry_after, config)
     logger.warning(
-        "Rate limited (429). Retry %d/%d after %.2fs",
+        "Retrying OJS request: reason=%s attempt=%d/%d delay=%.2fs",
+        reason,
         attempt + 1,
         config.max_retries,
         delay,
     )
-    try:
-        await asyncio.sleep(delay)
-    except asyncio.CancelledError:
-        # Propagate cancellation immediately — do not swallow it.
-        raise
+    await asyncio.sleep(delay)

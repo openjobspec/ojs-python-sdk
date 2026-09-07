@@ -2,26 +2,28 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ojs.ml import (
-    GPU_NVIDIA_A100,
-    GPU_NVIDIA_H100,
-    GPU_NVIDIA_T4,
-    GPU_NVIDIA_L4,
-    GPU_NVIDIA_V100,
     GPU_AMD_MI250,
     GPU_AMD_MI300X,
-    GPURequirements,
-    CPURequirements,
-    ResourceRequirements,
-    ModelReference,
+    GPU_NVIDIA_A100,
+    GPU_NVIDIA_H100,
+    GPU_NVIDIA_L4,
+    GPU_NVIDIA_T4,
+    GPU_NVIDIA_V100,
     CheckpointConfig,
+    CPURequirements,
+    GPURequirements,
+    ModelReference,
     PreemptionConfig,
+    ResourceRequirements,
+    merge_ml_meta,
+    with_checkpoint,
     with_gpu,
     with_model,
-    with_resources,
-    with_checkpoint,
     with_preemption,
-    merge_ml_meta,
+    with_resources,
 )
 
 
@@ -65,11 +67,8 @@ class TestGPURequirements:
 
     def test_frozen(self) -> None:
         req = GPURequirements(count=1)
-        try:
+        with pytest.raises(AttributeError):
             req.count = 2  # type: ignore[misc]
-            assert False, "should be frozen"
-        except AttributeError:
-            pass
 
 
 class TestCPURequirements:

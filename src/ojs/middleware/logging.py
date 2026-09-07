@@ -7,8 +7,8 @@ Usage::
 
     from ojs.middleware.logging import logging_middleware
 
-    worker.add_middleware(logging_middleware())
-    worker.add_middleware(logging_middleware(level="DEBUG"))
+    worker.middleware(logging_middleware())
+    worker.middleware(logging_middleware(level="DEBUG"))
 """
 
 from __future__ import annotations

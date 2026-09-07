@@ -1,6 +1,9 @@
 """Tests for Job, JobRequest, JobContext, JobState, and UniquePolicy."""
 
+import inspect
 from datetime import UTC, datetime
+
+import pytest
 
 import ojs
 from ojs.job import Job, JobContext, JobRequest, JobState, UniquePolicy
@@ -304,3 +307,26 @@ class TestJobContext:
             parent_results=[{"step1": "done"}, {"step2": "done"}],
         )
         assert len(ctx.parent_results) == 2
+
+    def test_constructor_exposes_only_handler_state(self) -> None:
+        parameters = inspect.signature(JobContext).parameters
+
+        assert list(parameters)[:3] == ["job", "attempt", "parent_results"]
+        assert "_transport" not in parameters
+        assert "_cancelled" not in parameters
+
+    def test_legacy_private_constructor_arguments_are_deprecated(self) -> None:
+        transport = object()
+
+        with pytest.warns(
+            DeprecationWarning,
+            match="private JobContext constructor arguments are deprecated",
+        ):
+            ctx = JobContext(
+                job=self._make_job(),
+                _transport=transport,
+                _cancelled=True,
+            )
+
+        assert ctx._transport is transport
+        assert ctx.is_cancelled is True

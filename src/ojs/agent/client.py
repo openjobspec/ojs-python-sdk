@@ -6,10 +6,9 @@ pause/resume for human-in-the-loop, and deterministic replay.
 
 from __future__ import annotations
 
-import json
-from typing import Any
-from urllib.parse import urljoin
+from typing import Any, Protocol, runtime_checkable
 
+from ojs.agent.endpoints import agent_endpoint
 from ojs.agent.types import (
     AgentState,
     Divergence,
@@ -17,19 +16,51 @@ from ojs.agent.types import (
     ForkResult,
     MergeOptions,
     MergeResult,
-    MergeStrategy,
     ReplayOptions,
     ReplayResult,
     ResumeDecision,
 )
-from ojs.errors import OJSError
+from ojs.errors import OJSValidationError
+from ojs.transport.http import HTTPTransport
 
-try:
-    import httpx
 
-    _HAS_HTTPX = True
-except ImportError:  # pragma: no cover
-    _HAS_HTTPX = False
+class AgentTransport(Protocol):
+    """Compatibility protocol for the original injected agent transport."""
+
+    async def post(self, url: str, body: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def get(self, url: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class AgentRequestTransport(Protocol):
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+
+
+class _LegacyAgentTransportAdapter:
+    def __init__(self, base_url: str, transport: AgentTransport) -> None:
+        self._base_url = base_url
+        self._transport = transport
+
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        url = f"{self._base_url}/ojs/v1{path}"
+        if method == "POST":
+            return await self._transport.post(url, body or {})
+        if method == "GET":
+            return await self._transport.get(url)
+        raise OJSValidationError(f"agent: unsupported HTTP method {method!r}")
 
 
 class AgentClient:
@@ -56,14 +87,25 @@ class AgentClient:
         base_url: str,
         *,
         headers: dict[str, str] | None = None,
-        transport: Any = None,
+        transport: AgentRequestTransport | AgentTransport | None = None,
         timeout: float = 30.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._headers = headers or {}
-        self._transport = transport
-        self._timeout = timeout
-        self._client: Any = None
+        self._owned_transport: HTTPTransport | None = None
+        if transport is None:
+            self._owned_transport = HTTPTransport(
+                self._base_url,
+                timeout=timeout,
+                headers=headers,
+            )
+            self._transport: AgentRequestTransport = self._owned_transport
+        elif isinstance(transport, AgentRequestTransport):
+            self._transport = transport
+        else:
+            self._transport = _LegacyAgentTransportAdapter(
+                self._base_url,
+                transport,
+            )
 
     async def fork(
         self,
@@ -80,16 +122,16 @@ class AgentClient:
             ForkResult with the new branch ID and content ID.
         """
         if not job_id:
-            raise OJSError("agent: job_id required for fork")
+            raise OJSValidationError("agent: job_id required for fork")
 
         opts = options or ForkOptions()
         if opts.at_turn < 0:
-            raise OJSError("agent: at_turn must be >= 0")
+            raise OJSValidationError("agent: at_turn must be >= 0")
         body = {
             "at_turn": opts.at_turn,
             "branch_name": opts.branch_name,
         }
-        data = await self._post(f"/v1/agents/{job_id}/fork", body)
+        data = await self._post(agent_endpoint(job_id, "fork"), body)
         return ForkResult(
             branch_id=data.get("branch_id", ""),
             content_id=data.get("content_id", ""),
@@ -111,19 +153,19 @@ class AgentClient:
             MergeResult with the merged content ID and any conflicts.
         """
         if not job_id:
-            raise OJSError("agent: job_id required for merge")
+            raise OJSValidationError("agent: job_id required for merge")
 
         opts = options or MergeOptions()
         if not opts.branch_a:
-            raise OJSError("agent: branch_a required for merge")
+            raise OJSValidationError("agent: branch_a required for merge")
         if not opts.branch_b:
-            raise OJSError("agent: branch_b required for merge")
+            raise OJSValidationError("agent: branch_b required for merge")
         body = {
             "branch_a": opts.branch_a,
             "branch_b": opts.branch_b,
             "strategy": opts.strategy.value,
         }
-        data = await self._post(f"/v1/agents/{job_id}/merge", body)
+        data = await self._post(agent_endpoint(job_id, "merge"), body)
         return MergeResult(
             merged_id=data.get("merged_id", ""),
             conflicts=data.get("conflicts", []),
@@ -137,9 +179,9 @@ class AgentClient:
             reason: Human-readable reason for the pause.
         """
         if not job_id:
-            raise OJSError("agent: job_id required for pause")
+            raise OJSValidationError("agent: job_id required for pause")
 
-        await self._post(f"/v1/agents/{job_id}/pause", {"reason": reason})
+        await self._post(agent_endpoint(job_id, "pause"), {"reason": reason})
 
     async def resume(
         self,
@@ -153,7 +195,7 @@ class AgentClient:
             decision: The human's approval/rejection and metadata.
         """
         if not job_id:
-            raise OJSError("agent: job_id required for resume")
+            raise OJSValidationError("agent: job_id required for resume")
 
         dec = decision or ResumeDecision()
         body = {
@@ -161,7 +203,7 @@ class AgentClient:
             "comment": dec.comment,
             "metadata": dec.metadata,
         }
-        await self._post(f"/v1/agents/{job_id}/resume", body)
+        await self._post(agent_endpoint(job_id, "resume"), body)
 
     async def replay(
         self,
@@ -178,14 +220,14 @@ class AgentClient:
             ReplayResult with step count and any divergences.
         """
         if not job_id:
-            raise OJSError("agent: job_id required for replay")
+            raise OJSValidationError("agent: job_id required for replay")
 
         opts = options or ReplayOptions()
         body = {
             "from_turn": opts.from_turn,
             "mock_providers": opts.mock_providers,
         }
-        data = await self._post(f"/v1/agents/{job_id}/replay", body)
+        data = await self._post(agent_endpoint(job_id, "replay"), body)
         divergences = [
             Divergence(
                 turn=d.get("turn", 0),
@@ -210,61 +252,24 @@ class AgentClient:
         Returns:
             Current AgentState.
         """
-        data = await self._get(f"/v1/agents/{job_id}/state")
+        if not job_id:
+            raise OJSValidationError("agent: job_id required for state lookup")
+        data = await self._get(agent_endpoint(job_id, "state"))
         return AgentState(data.get("state", "running"))
 
     async def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        """POST to the agent API via httpx or injected transport."""
-        if self._transport is not None:
-            return await self._transport.post(self._base_url + path, body)
-        return await self._http("POST", path, body)
+        return await self._transport.request("POST", path, body=body)
 
     async def _get(self, path: str) -> dict[str, Any]:
-        """GET from the agent API."""
-        if self._transport is not None:
-            return await self._transport.get(self._base_url + path)
-        return await self._http("GET", path)
-
-    async def _http(self, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Internal HTTP client using httpx."""
-        if not _HAS_HTTPX:
-            raise OJSError(
-                "agent: httpx is required. Install with: pip install httpx"
-            )
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=self._timeout,
-                headers={"Content-Type": "application/json", **self._headers},
-            )
-        url = self._base_url + path
-        try:
-            if method == "POST":
-                resp = await self._client.post(url, json=body)
-            else:
-                resp = await self._client.get(url)
-            resp.raise_for_status()
-            if resp.status_code == 204:
-                return {}
-            return resp.json()  # type: ignore[no-any-return]
-        except httpx.HTTPStatusError as exc:
-            try:
-                detail = exc.response.json()
-            except Exception:
-                detail = {"error": exc.response.text}
-            raise OJSError(
-                f"agent: {method} {path} returned {exc.response.status_code}: "
-                f"{detail.get('error', str(detail))}"
-            ) from exc
-        except httpx.RequestError as exc:
-            raise OJSError(f"agent: {method} {path} failed: {exc}") from exc
+        return await self._transport.request("GET", path)
 
     async def close(self) -> None:
-        """Close the underlying HTTP client."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        """Close only the core transport owned by this client."""
+        if self._owned_transport is not None:
+            await self._owned_transport.close()
+            self._owned_transport = None
 
-    async def __aenter__(self) -> "AgentClient":
+    async def __aenter__(self) -> AgentClient:
         return self
 
     async def __aexit__(self, *args: Any) -> None:

@@ -1,7 +1,7 @@
 # Configuration file for the Sphinx documentation builder.
 
 project = "OpenJobSpec Python SDK"
-copyright = "2024, OpenJobSpec Contributors"
+copyright = "2024, OpenJobSpec Contributors"  # noqa: A001 - Sphinx setting name
 author = "OpenJobSpec Contributors"
 
 extensions = [
@@ -23,4 +23,3 @@ html_theme_options = {
     "github_user": "openjobspec",
     "github_repo": "ojs-python-sdk",
 }
-

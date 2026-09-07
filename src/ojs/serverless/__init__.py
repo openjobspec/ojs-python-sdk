@@ -33,6 +33,6 @@ from ojs.serverless.aws_lambda import LambdaHandler
 from ojs.serverless.azure_functions import AzureFunctionsHandler
 
 __all__ = [
-    "LambdaHandler",
     "AzureFunctionsHandler",
+    "LambdaHandler",
 ]

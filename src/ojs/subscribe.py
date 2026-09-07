@@ -1,31 +1,12 @@
-"""Server-Sent Events (SSE) subscription for real-time OJS job events.
-
-Example::
-
-    from ojs.subscribe import subscribe, subscribe_job
-
-    async for event in subscribe_job("http://localhost:8080", "job-123"):
-        print(f"State changed: {event['data']}")
-"""
+"""Server-Sent Events facade for real-time OJS job events."""
 
 from __future__ import annotations
 
-import asyncio
-import json
-from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
 
 import httpx
 
-
-@dataclass
-class SSEEvent:
-    """A single Server-Sent Event from the OJS stream."""
-
-    id: str = ""
-    type: str = "message"
-    data: dict[str, Any] | None = None
-    raw: str = ""
+from ojs.sse import MalformedDataPolicy, SSEClient, SSEEvent, SubscriptionSession
 
 
 async def subscribe(
@@ -33,57 +14,32 @@ async def subscribe(
     channel: str,
     *,
     auth: str | None = None,
-    timeout: float = 0,
+    timeout: float = 0,  # noqa: ASYNC109 - public connection-timeout API
+    client: SSEClient | None = None,
+    malformed_data: MalformedDataPolicy = "raw",
+    reconnect: bool = False,
+    max_reconnects: int = 3,
+    reconnect_delay: float = 0.5,
 ) -> AsyncIterator[SSEEvent]:
-    """Subscribe to an SSE stream from the OJS server.
+    """Subscribe to one encoded OJS SSE channel.
 
-    Yields SSEEvent objects as they arrive. The connection stays open until
-    the caller breaks out of the async for loop or the server closes it.
-
-    Args:
-        url: Base URL of the OJS server.
-        channel: SSE channel (e.g., 'job:<id>', 'queue:<name>').
-        auth: Bearer auth token (optional).
-        timeout: Connection timeout in seconds (0 = no timeout).
+    Reconnection is explicit. Set ``reconnect=True`` to reconnect after EOF or
+    connection loss and send ``Last-Event-ID`` for replay.
     """
-    stream_url = f"{url.rstrip('/')}/ojs/v1/events/stream?channel={channel}"
-    headers = {"Accept": "text/event-stream", "Cache-Control": "no-cache"}
-    if auth:
-        headers["Authorization"] = f"Bearer {auth}"
-
-    async with httpx.AsyncClient(timeout=timeout or None) as client:
-        async with client.stream("GET", stream_url, headers=headers) as response:
-            response.raise_for_status()
-
-            event_type = ""
-            event_id = ""
-            event_data = ""
-
-            async for line in response.aiter_lines():
-                if line == "":
-                    # Empty line = event boundary
-                    if event_data:
-                        try:
-                            parsed = json.loads(event_data)
-                        except json.JSONDecodeError:
-                            parsed = None
-
-                        yield SSEEvent(
-                            id=event_id,
-                            type=event_type or "message",
-                            data=parsed,
-                            raw=event_data,
-                        )
-                    event_type = ""
-                    event_id = ""
-                    event_data = ""
-                elif line.startswith("event:"):
-                    event_type = line[6:].lstrip()
-                elif line.startswith("id:"):
-                    event_id = line[3:].lstrip()
-                elif line.startswith("data:"):
-                    chunk = line[5:].lstrip()
-                    event_data = event_data + "\n" + chunk if event_data else chunk
+    session = SubscriptionSession(
+        url,
+        channel,
+        auth=auth,
+        timeout=timeout,
+        client=client,
+        client_factory=httpx.AsyncClient,
+        malformed_data=malformed_data,
+        reconnect=reconnect,
+        max_reconnects=max_reconnects,
+        reconnect_delay=reconnect_delay,
+    )
+    async for event in session.events():
+        yield event
 
 
 async def subscribe_job(
@@ -91,9 +47,25 @@ async def subscribe_job(
     job_id: str,
     *,
     auth: str | None = None,
+    timeout: float = 0,  # noqa: ASYNC109 - public connection-timeout API
+    client: SSEClient | None = None,
+    malformed_data: MalformedDataPolicy = "raw",
+    reconnect: bool = False,
+    max_reconnects: int = 3,
+    reconnect_delay: float = 0.5,
 ) -> AsyncIterator[SSEEvent]:
     """Subscribe to events for a specific job."""
-    async for event in subscribe(url, f"job:{job_id}", auth=auth):
+    async for event in subscribe(
+        url,
+        f"job:{job_id}",
+        auth=auth,
+        timeout=timeout,
+        client=client,
+        malformed_data=malformed_data,
+        reconnect=reconnect,
+        max_reconnects=max_reconnects,
+        reconnect_delay=reconnect_delay,
+    ):
         yield event
 
 
@@ -102,7 +74,26 @@ async def subscribe_queue(
     queue: str,
     *,
     auth: str | None = None,
+    timeout: float = 0,  # noqa: ASYNC109 - public connection-timeout API
+    client: SSEClient | None = None,
+    malformed_data: MalformedDataPolicy = "raw",
+    reconnect: bool = False,
+    max_reconnects: int = 3,
+    reconnect_delay: float = 0.5,
 ) -> AsyncIterator[SSEEvent]:
     """Subscribe to events for all jobs in a queue."""
-    async for event in subscribe(url, f"queue:{queue}", auth=auth):
+    async for event in subscribe(
+        url,
+        f"queue:{queue}",
+        auth=auth,
+        timeout=timeout,
+        client=client,
+        malformed_data=malformed_data,
+        reconnect=reconnect,
+        max_reconnects=max_reconnects,
+        reconnect_delay=reconnect_delay,
+    ):
         yield event
+
+
+__all__ = ["SSEEvent", "subscribe", "subscribe_job", "subscribe_queue"]

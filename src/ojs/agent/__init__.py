@@ -19,6 +19,7 @@ Usage::
 """
 
 from ojs.agent.client import AgentClient
+from ojs.agent.decorator import durable
 from ojs.agent.types import (
     AgentState,
     Divergence,
@@ -48,4 +49,5 @@ __all__ = [
     "ReplayResult",
     "ResumeDecision",
     "ToolCall",
+    "durable",
 ]

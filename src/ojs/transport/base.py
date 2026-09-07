@@ -345,4 +345,3 @@ class Transport(abc.ABC):
         Returns:
             Parsed JSON response body.
         """
-
